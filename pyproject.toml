@@ -4,6 +4,7 @@ version = "0.1.0"
 description = ""
 authors = ["Your Name <you@example.com>"]
 readme = "README.md"
+package-mode = false
 
 [tool.poetry.dependencies]
 python = "^3.14"
@@ -14,6 +15,7 @@ daphne = "^4.2.3"
 pillow = "^12.3.0"
 ipython = "^9.17.0"
 python-dotenv = "^1.2.3"
+redis = "7.4.0"
 
 
 [build-system]
