@@ -135,3 +135,39 @@ class ChatRoom(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class RoomReadState(models.Model):
+    """Граница прочитанного: id последнего сообщения, которое видел пользователь.
+
+    Непрочитанных в комнате = количество сообщений других пользователей
+    с id больше last_read_message_id.
+    """
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="room_read_states",
+    )
+    room = models.ForeignKey(
+        "ChatRoom",
+        on_delete=models.CASCADE,
+        related_name="read_states",
+    )
+    last_read_message_id = models.BigIntegerField(
+        default=0,
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "room"],
+                name="uniq_user_room_read_state",
+            ),
+        ]
+
+    def __str__(self):
+        return (
+            f"{self.user.username} @ {self.room.name}: "
+            f"{self.last_read_message_id}"
+        )
