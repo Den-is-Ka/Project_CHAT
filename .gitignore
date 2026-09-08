@@ -9,6 +9,8 @@ __pycache__/
 
 Qwen/
 box.html
+main.py
+tree.txt
 
 # Distribution / packaging
 .Python
