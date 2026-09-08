@@ -3,18 +3,34 @@ from django.urls import path
 from .views import (
     AddRoomMemberView,
     CreateRoomView,
+    JoinRoomView,
     LeaveRoomView,
     RemoveRoomMemberView,
+    RoomMediaView,
+    SendMediaMessageView,
     UpdateRoomView,
-    chat_page, JoinRoomView,
+    chat_page,
+    first_chat,
 )
 
 
 urlpatterns = [
     path(
+        "start/",
+        first_chat,
+        name="first_chat",
+    ),
+
+    path(
         "rooms/create/",
         CreateRoomView.as_view(),
         name="create_room",
+    ),
+
+    path(
+        "rooms/<int:room_id>/join/",
+        JoinRoomView.as_view(),
+        name="join_room",
     ),
 
     path(
@@ -42,13 +58,20 @@ urlpatterns = [
     ),
 
     path(
+        "rooms/<int:room_id>/send_file/",
+        SendMediaMessageView.as_view(),
+        name="send_message_file",
+    ),
+
+    path(
+        "rooms/<int:room_id>/media/",
+        RoomMediaView.as_view(),
+        name="room_media",
+    ),
+
+    path(
         "<str:room_name>/",
         chat_page,
         name="chat",
     ),
-    path(
-        "rooms/<int:room_id>/join/",
-        JoinRoomView.as_view(),
-        name="join_room",
-),
 ]
