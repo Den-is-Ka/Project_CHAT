@@ -87,6 +87,14 @@ DATABASES = {
         'OPTIONS': {
             # Снижает ошибки «database is locked» при конкурентных записях.
             'timeout': 20,
+            # WAL: читатели не блокируют записывающего и наоборот.
+            'init_command': (
+                'PRAGMA journal_mode=WAL;'
+                'PRAGMA synchronous=NORMAL;'
+            ),
+            # BEGIN IMMEDIATE берёт RESERVED lock сразу, без
+            # дедлока при апгрейде отложенной транзакции.
+            'transaction_mode': 'IMMEDIATE',
         },
     }
 }
