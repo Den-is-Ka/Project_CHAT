@@ -1151,3 +1151,140 @@ class ChatConsumerReconnectTests(TransactionTestCase):
             )
 
         self.run_loop(scenario())
+
+
+class DirectMessageViewTests(TransactionTestCase):
+    """Личные сообщения: создание комнаты, идемпотентность, display_name."""
+
+    def setUp(self):
+        self.alice = User.objects.create_user(
+            username="alice",
+            password="pass-alice-123",
+        )
+        self.bob = User.objects.create_user(
+            username="bob",
+            password="pass-bob-123",
+        )
+
+    def test_creates_dm_room(self):
+        self.client.force_login(self.alice)
+
+        response = self.client.post(
+            "/chat/direct/",
+            {"username": "bob"},
+            HTTP_HOST="localhost",
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        data = response.json()
+        self.assertTrue(data["success"])
+        self.assertTrue(data["url"].startswith("/chat/dm-"))
+
+        room_name = data["url"].rsplit("/", 2)[-2]
+        room = ChatRoom.objects.get(name=room_name)
+
+        self.assertTrue(room.is_private)
+        self.assertEqual(room.owner, self.alice)
+        self.assertIn(self.alice, room.members.all())
+        self.assertIn(self.bob, room.members.all())
+
+    def test_idempotent_returns_same_room(self):
+        self.client.force_login(self.alice)
+
+        resp1 = self.client.post(
+            "/chat/direct/",
+            {"username": "bob"},
+            HTTP_HOST="localhost",
+        )
+        url1 = resp1.json()["url"]
+
+        resp2 = self.client.post(
+            "/chat/direct/",
+            {"username": "bob"},
+            HTTP_HOST="localhost",
+        )
+
+        self.assertEqual(resp2.json()["url"], url1)
+
+    def test_self_dm_returns_400(self):
+        self.client.force_login(self.alice)
+
+        response = self.client.post(
+            "/chat/direct/",
+            {"username": "alice"},
+            HTTP_HOST="localhost",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn(
+            "себе",
+            response.json()["message"].lower(),
+        )
+
+    def test_missing_user_returns_404(self):
+        self.client.force_login(self.alice)
+
+        response = self.client.post(
+            "/chat/direct/",
+            {"username": "no_such_user_xyz",
+            },
+            HTTP_HOST="localhost",
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_empty_username_returns_400(self):
+        self.client.force_login(self.alice)
+
+        response = self.client.post(
+            "/chat/direct/",
+            {"username": ""},
+            HTTP_HOST="localhost",
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_dm_appears_in_sidebar(self):
+        self.client.force_login(self.alice)
+
+        resp = self.client.post(
+            "/chat/direct/",
+            {"username": "bob"},
+            HTTP_HOST="localhost",
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        room_name = resp.json()["url"].rsplit("/", 2)[-2]
+
+        page = self.client.get(
+            f"/chat/{room_name}/",
+            HTTP_HOST="localhost",
+        )
+
+        room_names = [
+            r.name for r in page.context["rooms"]
+        ]
+
+        self.assertIn(room_name, room_names)
+
+    def test_chat_page_display_name_is_other_username(self):
+        self.client.force_login(self.alice)
+
+        resp = self.client.post(
+            "/chat/direct/",
+            {"username": "bob"},
+            HTTP_HOST="localhost",
+        )
+
+        room_name = resp.json()["url"].rsplit("/", 2)[-2]
+
+        page = self.client.get(
+            f"/chat/{room_name}/",
+            HTTP_HOST="localhost",
+        )
+
+        self.assertEqual(
+            page.context["room"].display_name,
+            "bob",
+        )
