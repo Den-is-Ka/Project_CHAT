@@ -13,14 +13,92 @@ class Message(models.Model):
         on_delete=models.CASCADE,
         related_name="messages",
     )
-    text = models.TextField()
+    text = models.TextField(
+        blank=True,
+        default="",
+    )
+    attachment = models.FileField(
+        upload_to="chat_files/",
+        blank=True,
+        null=True,
+    )
+
+    # Тип вложения: "image", "video", "audio" или "file".
+    attachment_type = models.CharField(
+        max_length=20,
+        blank=True,
+        default="",
+    )
+    attachment_name = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
+
+    # Сообщение, на которое дан ответ (цитата). Reply-сообщение
+    # показывает исходное сообщение в рамке-цитате.
+    reply_to = models.ForeignKey(
+        "self",
+        on_delete=models.CASCADE,
+        related_name="replies",
+        null=True,
+        blank=True,
+    )
 
     class Meta:
         ordering = ["created_at"]
 
     def __str__(self):
-        return f"{self.user.username}: {self.text}"
+        if self.text:
+            return f"{self.user.username}: {self.text}"
+
+        if self.attachment_name:
+            return f"{self.user.username}: {self.attachment_name}"
+
+        return f"Сообщение #{self.pk}"
+
+
+# Список эмодзи, которые можно ставить на сообщения как реакции.
+REACTION_EMOJIS = (
+    "👍",
+    "❤️",
+    "😂",
+    "😮",
+    "😢",
+    "🔥",
+    "👏",
+    "🎉",
+)
+
+
+class MessageReaction(models.Model):
+    """Реакция (эмодзи) пользователя на сообщение."""
+
+    message = models.ForeignKey(
+        "Message",
+        on_delete=models.CASCADE,
+        related_name="reactions",
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="message_reactions",
+    )
+    emoji = models.CharField(max_length=8)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["message", "user", "emoji"],
+                name="uniq_message_user_emoji",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.user.username}: {self.emoji}"
 
 
 class ChatRoom(models.Model):
