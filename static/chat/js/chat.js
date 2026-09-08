@@ -312,6 +312,8 @@ function handleWebSocketMessage(event) {
 
             scrollToBottom(true);
 
+            markCurrentRoomRead();
+
             break;
 
 
@@ -5376,6 +5378,115 @@ if (
             setRoomsSidebarState(
                 !collapsed
             );
+        }
+    );
+}
+
+
+// ==================================================
+// Поиск по чатам в сайдбаре
+// ==================================================
+
+const roomsSearchInput =
+    document.getElementById(
+        "rooms-search-input"
+    );
+
+
+const roomsFilteredEmpty =
+    document.getElementById(
+        "rooms-filtered-empty"
+    );
+
+
+const roomLinks =
+    Array.from(
+        document.querySelectorAll(
+            ".rooms-list .room-link"
+        )
+    );
+
+
+function filterRooms() {
+
+    if (!roomsSearchInput) {
+        return;
+    }
+
+    const query =
+        roomsSearchInput.value
+            .trim()
+            .toLowerCase();
+
+    let visibleCount = 0;
+
+    roomLinks.forEach(
+        function (link) {
+
+            const name =
+                (
+                    link.dataset.roomName
+                    || link.textContent
+                ).trim()
+                .toLowerCase();
+
+            const match =
+                name.includes(query);
+
+            link.hidden = !match;
+
+            if (match) {
+                visibleCount += 1;
+            }
+        }
+    );
+
+    if (roomsFilteredEmpty) {
+        roomsFilteredEmpty.hidden =
+            !(
+                query
+                &&
+                visibleCount === 0
+            );
+    }
+}
+
+
+if (roomsSearchInput) {
+
+    roomsSearchInput.addEventListener(
+        "input",
+        filterRooms
+    );
+
+    roomsSearchInput.addEventListener(
+        "search",
+        filterRooms
+    );
+}
+
+
+// Помечаем комнату прочитанной при поступлении нового сообщения
+// (сообщения видны прямо сейчас, непрочитанными они не станут).
+function markCurrentRoomRead() {
+
+    if (
+        !isAuthenticated
+        ||
+        !chatConfig.readUrl
+    ) {
+        return;
+    }
+
+    apiRequest(
+        chatConfig.readUrl,
+        {
+            method: "POST",
+        }
+    ).catch(
+        function () {
+            // Ошибку пометки чтения игнорируем —
+            // счётчик поправится при следующем открытии чата.
         }
     );
 }
