@@ -25,7 +25,6 @@ from .presence import (
 from .utils import serialize_message
 from .validators import validate_message
 
-
 # Коды закрытия WebSocket по причинам:
 # 4000 — комната не найдена,
 # 4001 — нет доступа к комнате.
@@ -87,10 +86,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             user.username,
         )
 
-        reconnecting = (
-            user_was_online
-            or await self.presence_reconnect_grace(user.username)
-        )
+        reconnecting = user_was_online or await self.presence_reconnect_grace(user.username)
 
         if reconnecting:
             await self.presence_clear_grace(user.username)
@@ -152,9 +148,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         except RuntimeError:
             return
 
-        loop.create_task(
-            self._delayed_leave(username)
-        )
+        loop.create_task(self._delayed_leave(username))
 
     async def _delayed_leave(self, username):
         """Публикует "вышел из чата", если пользователь не вернулся."""
@@ -183,10 +177,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         """Отправляет системное событие о входе/выходе пользователя."""
 
         # Не отправляем событие обратно отправителю.
-        if (
-            event.get("channel_name")
-            and event["channel_name"] == self.channel_name
-        ):
+        if event.get("channel_name") and event["channel_name"] == self.channel_name:
             return
 
         await self.send(
@@ -209,10 +200,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         except json.JSONDecodeError:
             incoming = None
 
-        if (
-            isinstance(incoming, dict)
-            and incoming.get("type") == "ping"
-        ):
+        if isinstance(incoming, dict) and incoming.get("type") == "ping":
             await self.send(
                 text_data=json.dumps(
                     {
@@ -223,18 +211,12 @@ class ChatConsumer(AsyncWebsocketConsumer):
             return
 
         # Реакция (эмодзи) на сообщение.
-        if (
-            isinstance(incoming, dict)
-            and incoming.get("type") == "react"
-        ):
+        if isinstance(incoming, dict) and incoming.get("type") == "react":
             await self.handle_reaction(incoming)
             return
 
         # Комментарий к сообщению.
-        if (
-            isinstance(incoming, dict)
-            and incoming.get("type") == "comment"
-        ):
+        if isinstance(incoming, dict) and incoming.get("type") == "comment":
             await self.handle_comment(incoming)
             return
 
@@ -244,10 +226,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 text_data=json.dumps(
                     {
                         "type": "error",
-                        "message": (
-                            "Чтобы отправлять сообщения, "
-                            "нужно вступить в комнату."
-                        ),
+                        "message": ("Чтобы отправлять сообщения, " "нужно вступить в комнату."),
                     }
                 )
             )
@@ -303,9 +282,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         """Ставит или убирает реакцию (эмодзи) на сообщение."""
 
         if not await self.can_send_messages(self.room):
-            await self.send_ws_error(
-                "Чтобы ставить реакции, нужно вступить в комнату."
-            )
+            await self.send_ws_error("Чтобы ставить реакции, нужно вступить в комнату.")
             return
 
         try:
@@ -333,9 +310,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             return
 
         if author_id == user.id:
-            await self.send_ws_error(
-                "Нельзя ставить реакции на свои сообщения."
-            )
+            await self.send_ws_error("Нельзя ставить реакции на свои сообщения.")
             return
 
         # Переключаем реакцию: если пользователь уже поставил её —
@@ -363,9 +338,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         """Создаёт reply-сообщение с цитатой исходного текста."""
 
         if not await self.can_send_messages(self.room):
-            await self.send_ws_error(
-                "Чтобы отвечать, нужно вступить в комнату."
-            )
+            await self.send_ws_error("Чтобы отвечать, нужно вступить в комнату.")
             return
 
         try:
@@ -381,9 +354,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             return
 
         if len(text) > 1000:
-            await self.send_ws_error(
-                "Ответ не должен превышать 1000 символов."
-            )
+            await self.send_ws_error("Ответ не должен превышать 1000 символов.")
             return
 
         user = self.scope["user"]
@@ -399,9 +370,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             return
 
         if author_id == user.id:
-            await self.send_ws_error(
-                "Нельзя отвечать на свои сообщения."
-            )
+            await self.send_ws_error("Нельзя отвечать на свои сообщения.")
             return
 
         payload = await self.create_reply_message(
@@ -455,12 +424,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     "message": event.get("message", ""),
                     "created_at": event.get("created_at"),
                     "attachment": event.get("attachment"),
-                    "attachment_type": (
-                        event.get("attachment_type", "")
-                    ),
-                    "attachment_name": (
-                        event.get("attachment_name", "")
-                    ),
+                    "attachment_type": (event.get("attachment_type", "")),
+                    "attachment_name": (event.get("attachment_name", "")),
                     "reactions": event.get("reactions", []),
                     "reply_to": event.get("reply_to"),
                 }
@@ -525,7 +490,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         Вся работа выполняется в sync-контексте: сериализация
         обращается к БД за реакциями/комментариями, а значит
         её нельзя вызывать из async-контекста (SynchronousOnlyOperation).
-       """
+        """
 
         message = Message.objects.create(
             user_id=user_id,
@@ -533,11 +498,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             text=text,
         )
 
-        message = (
-            Message.objects
-            .select_related("user")
-            .get(pk=message.pk)
-        )
+        message = Message.objects.select_related("user").get(pk=message.pk)
 
         return serialize_message(message)
 
@@ -547,26 +508,17 @@ class ChatConsumer(AsyncWebsocketConsumer):
         (None, если сообщение не найдено).
         """
 
-        return (
-            Message.objects
-            .filter(id=message_id, room=room)
-            .values_list("user_id", flat=True)
-            .first()
-        )
+        return Message.objects.filter(id=message_id, room=room).values_list("user_id", flat=True).first()
 
     @database_sync_to_async
     def toggle_reaction(self, message_id, user_id, emoji):
         """Добавляет или убирает реакцию пользователя на сообщение."""
 
-        reaction = (
-            MessageReaction.objects
-            .filter(
-                message_id=message_id,
-                user_id=user_id,
-                emoji=emoji,
-            )
-            .first()
-        )
+        reaction = MessageReaction.objects.filter(
+            message_id=message_id,
+            user_id=user_id,
+            emoji=emoji,
+        ).first()
 
         if reaction is not None:
             reaction.delete()
@@ -602,8 +554,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         )
 
         message = (
-            Message.objects
-            .select_related("user")
+            Message.objects.select_related("user")
             .select_related("reply_to")
             .select_related("reply_to__user")
             .get(pk=message.pk)
@@ -616,8 +567,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         """Возвращает последние сообщения комнаты (историю)."""
 
         messages = list(
-            Message.objects
-            .filter(room_id=room_id)
+            Message.objects.filter(room_id=room_id)
             .select_related("user")
             .select_related("reply_to__user")
             .order_by("-created_at")[:MESSAGE_HISTORY_LIMIT]
@@ -655,10 +605,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         user = self.scope["user"]
 
-        return (
-            room.owner_id == user.id
-            or room.members.filter(id=user.id).exists()
-        )
+        return room.owner_id == user.id or room.members.filter(id=user.id).exists()
 
     @database_sync_to_async
     def is_send_rate_ok(self):
@@ -732,6 +679,4 @@ class ChatConsumer(AsyncWebsocketConsumer):
             return True
 
         # Остальные пользователи должны быть участниками.
-        return room.members.filter(
-            id=user.id
-        ).exists()
+        return room.members.filter(id=user.id).exists()

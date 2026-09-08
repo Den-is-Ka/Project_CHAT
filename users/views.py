@@ -1,10 +1,10 @@
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
-from django.shortcuts import render, redirect
+from django.shortcuts import redirect, render
 from django.views.decorators.http import require_POST
 
-from .forms import RegistrationForm, ProfileForm
+from .forms import ProfileForm, RegistrationForm
 from .throttling import throttle_login, throttle_register
 
 
@@ -38,6 +38,7 @@ def login_view(request):
         }
     )
 
+
 @require_POST
 def logout_view(request):
     """Выход пользователя из системы."""
@@ -46,6 +47,7 @@ def logout_view(request):
         logout(request)
 
     return redirect("home")
+
 
 @require_POST
 @throttle_register

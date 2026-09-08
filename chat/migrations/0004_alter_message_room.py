@@ -14,6 +14,8 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='message',
             name='room',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='messages', to='chat.chatroom'),
+            field=models.ForeignKey(
+                on_delete=django.db.models.deletion.CASCADE, related_name='messages', to='chat.chatroom'
+            ),
         ),
     ]

@@ -39,19 +39,10 @@ class RegistrationForm(forms.ModelForm):
         email = self.cleaned_data.get("email", "").strip().lower()
 
         if not email:
-            raise forms.ValidationError(
-                "Укажите email."
-            )
+            raise forms.ValidationError("Укажите email.")
 
-        if (
-            User.objects
-            .filter(email__iexact=email)
-            .exclude(pk=self.instance.pk)
-            .exists()
-        ):
-            raise forms.ValidationError(
-                "Пользователь с таким email уже существует."
-            )
+        if User.objects.filter(email__iexact=email).exclude(pk=self.instance.pk).exists():
+            raise forms.ValidationError("Пользователь с таким email уже существует.")
 
         return email
 
@@ -61,14 +52,8 @@ class RegistrationForm(forms.ModelForm):
         password = cleaned_data.get("password")
         password_confirm = cleaned_data.get("password_confirm")
 
-        if (
-            password
-            and password_confirm
-            and password != password_confirm
-        ):
-            raise forms.ValidationError(
-                "Пароли не совпадают."
-            )
+        if password and password_confirm and password != password_confirm:
+            raise forms.ValidationError("Пароли не совпадают.")
 
         # Применяем системные валидаторы пароля
         # (AUTH_PASSWORD_VALIDATORS из settings).
@@ -87,9 +72,7 @@ class RegistrationForm(forms.ModelForm):
     def save(self, commit=True):
         user = super().save(commit=False)
 
-        user.set_password(
-            self.cleaned_data["password"]
-        )
+        user.set_password(self.cleaned_data["password"])
 
         if commit:
             user.save()
@@ -131,19 +114,10 @@ class ProfileForm(forms.ModelForm):
         email = self.cleaned_data.get("email", "").strip().lower()
 
         if not email:
-            raise forms.ValidationError(
-                "Укажите email."
-            )
+            raise forms.ValidationError("Укажите email.")
 
-        if (
-            User.objects
-            .filter(email__iexact=email)
-            .exclude(pk=self.instance.pk)
-            .exists()
-        ):
-            raise forms.ValidationError(
-                "Пользователь с таким email уже существует."
-            )
+        if User.objects.filter(email__iexact=email).exclude(pk=self.instance.pk).exists():
+            raise forms.ValidationError("Пользователь с таким email уже существует.")
 
         return email
 
@@ -156,9 +130,7 @@ class ProfileForm(forms.ModelForm):
         try:
             resized_image = resize_avatar(avatar)
         except Exception:
-            raise forms.ValidationError(
-                "Не удалось обработать изображение."
-            )
+            raise forms.ValidationError("Не удалось обработать изображение.")
 
         buffer = BytesIO()
 

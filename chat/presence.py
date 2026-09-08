@@ -12,7 +12,6 @@
 """
 
 import json
-import time
 
 from django.core.cache import cache
 
@@ -105,9 +104,7 @@ def add_online_user(room_name, channel_name, username):
     def _add():
         users = get_online_users(room_name)
 
-        state["was_online"] = (
-            username in users.values()
-        )
+        state["was_online"] = username in users.values()
 
         users[channel_name] = username
 
@@ -151,9 +148,7 @@ def clear_reconnect_grace(room_name, username):
 def is_reconnect_within_grace(room_name, username):
     """Вернулся ли пользователь в течение grace-периода."""
 
-    return bool(
-        cache.get(_reconnect_key(room_name, username))
-    )
+    return bool(cache.get(_reconnect_key(room_name, username)))
 
 
 def is_user_online(room_name, username):

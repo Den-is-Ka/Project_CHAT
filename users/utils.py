@@ -1,6 +1,5 @@
 from PIL import Image, ImageOps
 
-
 AVATAR_SIZE = (300, 300)
 
 # Защита от decompression bomb: отклоняем изображения больше ~20 Мпикс.,

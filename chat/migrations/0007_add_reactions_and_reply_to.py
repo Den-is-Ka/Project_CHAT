@@ -16,7 +16,13 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='message',
             name='reply_to',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='replies', to='chat.message'),
+            field=models.ForeignKey(
+                blank=True,
+                null=True,
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name='replies',
+                to='chat.message',
+            ),
         ),
         migrations.CreateModel(
             name='MessageReaction',
@@ -24,11 +30,25 @@ class Migration(migrations.Migration):
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                 ('emoji', models.CharField(max_length=8)),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('message', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='reactions', to='chat.message')),
-                ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='message_reactions', to=settings.AUTH_USER_MODEL)),
+                (
+                    'message',
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE, related_name='reactions', to='chat.message'
+                    ),
+                ),
+                (
+                    'user',
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name='message_reactions',
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
             options={
-                'constraints': [models.UniqueConstraint(fields=('message', 'user', 'emoji'), name='uniq_message_user_emoji')],
+                'constraints': [
+                    models.UniqueConstraint(fields=('message', 'user', 'emoji'), name='uniq_message_user_emoji')
+                ],
             },
         ),
     ]

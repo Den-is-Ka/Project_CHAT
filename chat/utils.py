@@ -3,6 +3,8 @@ import os
 from django.db.models import Count as _Count
 from PIL import Image
 
+from .models import REACTION_EMOJIS
+
 # Защита от decompression bomb для изображений в сообщениях.
 Image.MAX_IMAGE_PIXELS = 20_000_000
 
@@ -53,15 +55,7 @@ FILE_EXTENSIONS = {
     ".epub",
 }
 
-ALLOWED_EXTENSIONS = (
-    IMAGE_EXTENSIONS
-    | VIDEO_EXTENSIONS
-    | AUDIO_EXTENSIONS
-    | FILE_EXTENSIONS
-)
-
-
-from .models import REACTION_EMOJIS
+ALLOWED_EXTENSIONS = IMAGE_EXTENSIONS | VIDEO_EXTENSIONS | AUDIO_EXTENSIONS | FILE_EXTENSIONS
 
 
 def get_attachment_type(name, content_type=""):
@@ -105,9 +99,7 @@ def validate_image_file(file):
         image = Image.open(file)
         image.verify()
     except Exception as exc:
-        raise ValueError(
-            "Файл не является корректным изображением."
-        ) from exc
+        raise ValueError("Файл не является корректным изображением.") from exc
 
     file.seek(0)
 
@@ -120,18 +112,10 @@ def serialize_message(message, current_user_id=None):
     return {
         "id": message.id,
         "username": message.user.username,
-        "avatar": (
-            message.user.avatar.url
-            if message.user.avatar
-            else None
-        ),
+        "avatar": (message.user.avatar.url if message.user.avatar else None),
         "message": message.text,
         "created_at": message.created_at.isoformat(),
-        "attachment": (
-            message.attachment.url
-            if message.attachment
-            else None
-        ),
+        "attachment": (message.attachment.url if message.attachment else None),
         "attachment_type": message.attachment_type,
         "attachment_name": message.attachment_name,
         "reactions": _serialize_reactions(
@@ -163,26 +147,14 @@ def _serialize_reply_to(message):
             original._cached_reply_snippet = {
                 "id": original.id,
                 "username": original.user.username,
-                "avatar": (
-                    original.user.avatar.url
-                    if original.user.avatar
-                    else None
-                ),
+                "avatar": (original.user.avatar.url if original.user.avatar else None),
                 "message": original.text,
-                "attachment": (
-                    original.attachment.url
-                    if original.attachment
-                    else None
-                ),
+                "attachment": (original.attachment.url if original.attachment else None),
                 "attachment_type": original.attachment_type,
                 "attachment_name": original.attachment_name,
             }
 
-        reply_to = (
-            original._cached_reply_snippet
-            if original is not None
-            else None
-        )
+        reply_to = original._cached_reply_snippet if original is not None else None
 
         message._cached_reply_to = reply_to
         message._cached_reply_to_done = True
@@ -203,25 +175,13 @@ def _serialize_reactions(message, current_user_id=None):
     """
 
     if not hasattr(message, "_reaction_counts"):
-        query = message.reactions.values("emoji").annotate(
-            count=_Count("id")
-        )
-        message._reaction_counts = {
-            item["emoji"]: item["count"]
-            for item in query
-        }
+        query = message.reactions.values("emoji").annotate(count=_Count("id"))
+        message._reaction_counts = {item["emoji"]: item["count"] for item in query}
 
     has_current_user = current_user_id is not None
 
-    if (
-        has_current_user
-        and not hasattr(message, "_my_reactions")
-    ):
-        message._my_reactions = set(
-            message.reactions
-            .filter(user_id=current_user_id)
-            .values_list("emoji", flat=True)
-        )
+    if has_current_user and not hasattr(message, "_my_reactions"):
+        message._my_reactions = set(message.reactions.filter(user_id=current_user_id).values_list("emoji", flat=True))
 
     my_reactions = getattr(
         message,

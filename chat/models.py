@@ -1,5 +1,6 @@
-from config import settings
 from django.db import models
+
+from config import settings
 
 
 class Message(models.Model):
@@ -167,7 +168,4 @@ class RoomReadState(models.Model):
         ]
 
     def __str__(self):
-        return (
-            f"{self.user.username} @ {self.room.name}: "
-            f"{self.last_read_message_id}"
-        )
+        return f"{self.user.username} @ {self.room.name}: " f"{self.last_read_message_id}"

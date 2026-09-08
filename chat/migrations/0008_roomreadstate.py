@@ -18,8 +18,20 @@ class Migration(migrations.Migration):
             fields=[
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                 ('last_read_message_id', models.BigIntegerField(default=0)),
-                ('room', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='read_states', to='chat.chatroom')),
-                ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='room_read_states', to=settings.AUTH_USER_MODEL)),
+                (
+                    'room',
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE, related_name='read_states', to='chat.chatroom'
+                    ),
+                ),
+                (
+                    'user',
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name='room_read_states',
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
             options={
                 'constraints': [models.UniqueConstraint(fields=('user', 'room'), name='uniq_user_room_read_state')],

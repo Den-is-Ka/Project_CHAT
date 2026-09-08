@@ -3,7 +3,6 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -31,14 +30,12 @@ CSRF_TRUSTED_ORIGINS = os.getenv(
 
 INSTALLED_APPS = [
     'daphne',
-
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-
     'channels',
     'chat',
     'users',
@@ -88,10 +85,7 @@ DATABASES = {
             # Снижает ошибки «database is locked» при конкурентных записях.
             'timeout': 20,
             # WAL: читатели не блокируют записывающего и наоборот.
-            'init_command': (
-                'PRAGMA journal_mode=WAL;'
-                'PRAGMA synchronous=NORMAL;'
-            ),
+            'init_command': ('PRAGMA journal_mode=WAL;' 'PRAGMA synchronous=NORMAL;'),
             # BEGIN IMMEDIATE берёт RESERVED lock сразу, без
             # дедлока при апгрейде отложенной транзакции.
             'transaction_mode': 'IMMEDIATE',

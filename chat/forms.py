@@ -25,9 +25,7 @@ def _resize_room_avatar(avatar):
     try:
         resized_image = resize_avatar(avatar)
     except Exception:
-        raise forms.ValidationError(
-            "Не удалось обработать изображение."
-        )
+        raise forms.ValidationError("Не удалось обработать изображение.")
 
     buffer = BytesIO()
 
@@ -76,9 +74,7 @@ class ChatRoomForm(forms.ModelForm):
         }
 
     def clean_avatar(self):
-        return _resize_room_avatar(
-            self.cleaned_data.get("avatar")
-        )
+        return _resize_room_avatar(self.cleaned_data.get("avatar"))
 
 
 class ChatRoomUpdateForm(forms.ModelForm):
@@ -114,9 +110,7 @@ class ChatRoomUpdateForm(forms.ModelForm):
         }
 
     def clean_avatar(self):
-        return _resize_room_avatar(
-            self.cleaned_data.get("avatar")
-        )
+        return _resize_room_avatar(self.cleaned_data.get("avatar"))
 
 
 class AddRoomMemberForm(forms.Form):
@@ -132,8 +126,7 @@ class AddRoomMemberForm(forms.Form):
 
         if room is not None:
             self.fields["user"].queryset = (
-                User.objects
-                .exclude(id=room.owner_id)
+                User.objects.exclude(id=room.owner_id)
                 .exclude(id__in=room.members.values_list("id", flat=True))
                 .order_by("username")
             )
@@ -155,32 +148,21 @@ class SendMediaMessageForm(forms.Form):
         file = self.cleaned_data.get("file")
 
         if file is None:
-            raise forms.ValidationError(
-                "Файл не выбран."
-            )
+            raise forms.ValidationError("Файл не выбран.")
 
         if file.size > MAX_ATTACHMENT_SIZE:
-            raise forms.ValidationError(
-                "Файл не должен превышать 20 МБ."
-            )
+            raise forms.ValidationError("Файл не должен превышать 20 МБ.")
 
         ext = (file.name or "").lower()
 
-        if (
-            get_attachment_type(ext, file.content_type) == "file"
-            and not ext.endswith(tuple(ALLOWED_EXTENSIONS))
-        ):
-            raise forms.ValidationError(
-                "Недопустимый тип файла."
-            )
+        if get_attachment_type(ext, file.content_type) == "file" and not ext.endswith(tuple(ALLOWED_EXTENSIONS)):
+            raise forms.ValidationError("Недопустимый тип файла.")
 
         if get_attachment_type(ext, file.content_type) == "image":
             try:
                 validate_image_file(file)
             except ValueError as exc:
-                raise forms.ValidationError(
-                    str(exc)
-                ) from exc
+                raise forms.ValidationError(str(exc)) from exc
 
         file.seek(0)
 
@@ -190,4 +172,3 @@ class SendMediaMessageForm(forms.Form):
         caption = self.cleaned_data.get("caption") or ""
 
         return caption.strip()
-

@@ -7,7 +7,6 @@ from channels.testing import WebsocketCommunicator
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TransactionTestCase
-
 from PIL import Image
 
 from . import consumers as consumers_module
@@ -275,11 +274,7 @@ class SendMediaMessageViewTests(TransactionTestCase):
 
         self.assertEqual(response.status_code, 400)
 
-        self.assertFalse(
-            Message.objects.filter(
-                room=self.room
-            ).exists()
-        )
+        self.assertFalse(Message.objects.filter(room=self.room).exists())
 
     def test_anonymous_user_redirected_to_login(self):
         response = self.client.post(
@@ -516,10 +511,7 @@ class RoomUnreadTests(TransactionTestCase):
             ["alpha", "beta", "gamma"],
         )
 
-        counts = {
-            room.name: room.unread_count
-            for room in rooms
-        }
+        counts = {room.name: room.unread_count for room in rooms}
 
         self.assertEqual(counts["alpha"], 2)
         self.assertEqual(counts["beta"], 1)
@@ -537,10 +529,7 @@ class RoomUnreadTests(TransactionTestCase):
 
         rooms = response.context["rooms"]
 
-        counts = {
-            room.name: room.unread_count
-            for room in rooms
-        }
+        counts = {room.name: room.unread_count for room in rooms}
 
         self.assertEqual(counts["alpha"], 0)
 
@@ -558,10 +547,7 @@ class RoomUnreadTests(TransactionTestCase):
 
         rooms = response.context["rooms"]
 
-        counts = {
-            room.name: room.unread_count
-            for room in rooms
-        }
+        counts = {room.name: room.unread_count for room in rooms}
 
         self.assertEqual(counts["alpha"], 0)
 
@@ -584,10 +570,7 @@ class RoomUnreadTests(TransactionTestCase):
         )
         self.assertEqual(
             state.last_read_message_id,
-            self.room_alpha.messages
-                .order_by("-id")
-                .first()
-                .id,
+            self.room_alpha.messages.order_by("-id").first().id,
         )
 
     def test_non_member_cannot_mark_read(self):
@@ -640,9 +623,7 @@ class ChatConsumerReconnectTests(TransactionTestCase):
             "RECONNECT_GRACE",
             self.GRACE,
         ).start()
-        self.addCleanup(
-            patch.stopall
-        )
+        self.addCleanup(patch.stopall)
 
     def communicator(self, user):
         app = ChatConsumer.as_asgi()
@@ -715,9 +696,7 @@ class ChatConsumerReconnectTests(TransactionTestCase):
             ):
                 return message
 
-        self.fail(
-            f"Событие {action} ({username}) не получено"
-        )
+        self.fail(f"Событие {action} ({username}) не получено")
 
     async def assert_no_status(self, comm, timeout):
         """Проверяет, что за окно не пришло join/leave для member."""
@@ -732,13 +711,8 @@ class ChatConsumerReconnectTests(TransactionTestCase):
 
                 message = await comm.receive_json_from()
 
-                if (
-                    message.get("type") == "user_status"
-                    and message.get("username") == "member"
-                ):
-                    self.fail(
-                        f"Неожиданный статус: {message}"
-                    )
+                if message.get("type") == "user_status" and message.get("username") == "member":
+                    self.fail(f"Неожиданный статус: {message}")
 
             else:
 
@@ -776,9 +750,7 @@ class ChatConsumerReconnectTests(TransactionTestCase):
 
             # Даём отложенным проверкам ухода доработать,
             # чтобы они не остались висеть при закрытии цикла.
-            await asyncio.sleep(
-                self.GRACE + 0.5
-            )
+            await asyncio.sleep(self.GRACE + 0.5)
 
         self.run_loop(scenario())
 
@@ -808,9 +780,7 @@ class ChatConsumerReconnectTests(TransactionTestCase):
 
             await owner_comm.disconnect()
 
-            await asyncio.sleep(
-                self.GRACE + 0.5
-            )
+            await asyncio.sleep(self.GRACE + 0.5)
 
         self.run_loop(scenario())
 
@@ -820,9 +790,7 @@ class ChatConsumerReconnectTests(TransactionTestCase):
             await self.connect_until_history(comm)
 
             # После истории могут идти online_users и т.п.
-            await comm.send_json_to(
-                {"type": "ping"}
-            )
+            await comm.send_json_to({"type": "ping"})
 
             for _ in range(5):
                 message = await comm.receive_json_from(timeout=2)
@@ -834,9 +802,7 @@ class ChatConsumerReconnectTests(TransactionTestCase):
 
             await comm.disconnect()
 
-            await asyncio.sleep(
-                self.GRACE + 0.5
-            )
+            await asyncio.sleep(self.GRACE + 0.5)
 
         self.run_loop(scenario())
 
@@ -849,9 +815,7 @@ class ChatConsumerReconnectTests(TransactionTestCase):
             await self.connect_until_history(member_comm)
 
             # Отправляем текст через WebSocket.
-            await member_comm.send_json_to(
-                {"message": "живой текст"}
-            )
+            await member_comm.send_json_to({"message": "живой текст"})
 
             # Другой участник должен получить его сразу,
             # без перезагрузки страницы.
@@ -860,10 +824,7 @@ class ChatConsumerReconnectTests(TransactionTestCase):
             for _ in range(5):
                 message = await self.receive_safe(owner_comm)
 
-                if (
-                    message.get("type") == "message"
-                    and message.get("message") == "живой текст"
-                ):
+                if message.get("type") == "message" and message.get("message") == "живой текст":
                     received = True
                     break
 
@@ -875,10 +836,7 @@ class ChatConsumerReconnectTests(TransactionTestCase):
             for _ in range(5):
                 message = await self.receive_safe(member_comm)
 
-                if (
-                    message.get("type") == "message"
-                    and message.get("message") == "живой текст"
-                ):
+                if message.get("type") == "message" and message.get("message") == "живой текст":
                     echoed = True
                     break
 
@@ -887,9 +845,7 @@ class ChatConsumerReconnectTests(TransactionTestCase):
             await owner_comm.disconnect()
             await member_comm.disconnect()
 
-            await asyncio.sleep(
-                self.GRACE + 0.5
-            )
+            await asyncio.sleep(self.GRACE + 0.5)
 
         self.run_loop(scenario())
 
@@ -919,9 +875,7 @@ class ChatConsumerReconnectTests(TransactionTestCase):
 
             await comm.disconnect()
 
-            await asyncio.sleep(
-                self.GRACE + 0.5
-            )
+            await asyncio.sleep(self.GRACE + 0.5)
 
         self.run_loop(scenario())
 
@@ -975,9 +929,7 @@ class ChatConsumerReconnectTests(TransactionTestCase):
 
             await owner_comm.disconnect()
 
-            await asyncio.sleep(
-                self.GRACE + 0.5
-            )
+            await asyncio.sleep(self.GRACE + 0.5)
 
         self.run_loop(scenario())
 
@@ -1025,15 +977,11 @@ class ChatConsumerReconnectTests(TransactionTestCase):
                 ).exists()
             )()
 
-            self.assertFalse(
-                reply_exists
-            )
+            self.assertFalse(reply_exists)
 
             await owner_comm.disconnect()
 
-            await asyncio.sleep(
-                self.GRACE + 0.5
-            )
+            await asyncio.sleep(self.GRACE + 0.5)
 
         self.run_loop(scenario())
 
@@ -1090,9 +1038,7 @@ class ChatConsumerReconnectTests(TransactionTestCase):
             await owner_comm.disconnect()
             await member_comm.disconnect()
 
-            await asyncio.sleep(
-                self.GRACE + 0.5
-            )
+            await asyncio.sleep(self.GRACE + 0.5)
 
         self.run_loop(scenario())
 
@@ -1146,9 +1092,7 @@ class ChatConsumerReconnectTests(TransactionTestCase):
             await owner_comm.disconnect()
             await member_comm.disconnect()
 
-            await asyncio.sleep(
-                self.GRACE + 0.5
-            )
+            await asyncio.sleep(self.GRACE + 0.5)
 
         self.run_loop(scenario())
 
@@ -1227,7 +1171,8 @@ class DirectMessageViewTests(TransactionTestCase):
 
         response = self.client.post(
             "/chat/direct/",
-            {"username": "no_such_user_xyz",
+            {
+                "username": "no_such_user_xyz",
             },
             HTTP_HOST="localhost",
         )
@@ -1262,9 +1207,7 @@ class DirectMessageViewTests(TransactionTestCase):
             HTTP_HOST="localhost",
         )
 
-        room_names = [
-            r.name for r in page.context["rooms"]
-        ]
+        room_names = [r.name for r in page.context["rooms"]]
 
         self.assertIn(room_name, room_names)
 

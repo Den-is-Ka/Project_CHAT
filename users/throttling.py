@@ -42,10 +42,7 @@ def rate_limit(key, limit=DEFAULT_LIMIT, period=DEFAULT_PERIOD, message=""):
                 return JsonResponse(
                     {
                         "success": False,
-                        "error": message or (
-                            f"Превышен лимит запросов. "
-                            f"Повторите через {period} секунд."
-                        ),
+                        "error": message or (f"Превышен лимит запросов. " f"Повторите через {period} секунд."),
                     },
                     status=429,
                 )
