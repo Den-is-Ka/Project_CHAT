@@ -1896,6 +1896,8 @@ function sendMessage() {
 
             setInputPlaceholderDefault();
 
+            updateInputMode();
+
             input.focus();
 
             return;
@@ -1935,6 +1937,8 @@ function sendMessage() {
     setInputPlaceholderDefault();
 
     input.value = "";
+
+    updateInputMode();
 
     input.focus();
 }
@@ -1979,7 +1983,565 @@ if (messageInput) {
             }
         }
     );
+
+    messageInput.addEventListener(
+        "input",
+        updateInputMode
+    );
 }
+
+
+// ==================================================
+// Voice messages (запись голосовых сообщений)
+// ==================================================
+
+const RECORD_HOLD_MS =
+    3000;
+
+const MAX_RECORD_MS =
+    5 * 60 * 1000;
+
+const chatRecordButton =
+    document.getElementById(
+        "chat-record-button"
+    );
+
+
+const chatRecordingBar =
+    document.getElementById(
+        "chat-recording-bar"
+    );
+
+
+const chatRecordingTime =
+    document.getElementById(
+        "chat-recording-time"
+    );
+
+
+let mediaRecorder = null;
+let recordedChunks = [];
+let recordHoldTimer = null;
+let recordHoldActive = false;
+let recordStartTime = 0;
+let recordTimerInterval = null;
+let isRecording = false;
+
+
+// Переключение кнопок: пусто — микрофон, есть текст — отправить.
+function updateInputMode() {
+
+    const hasText =
+        !!(
+            messageInput
+            &&
+            messageInput.value.trim()
+        );
+
+    if (messageSubmitButton) {
+        messageSubmitButton.hidden =
+            !hasText;
+    }
+
+    if (chatRecordButton) {
+        chatRecordButton.hidden =
+            hasText;
+    }
+}
+
+
+function cancelRecordHold() {
+
+    if (recordHoldTimer) {
+
+        clearTimeout(recordHoldTimer);
+
+        recordHoldTimer = null;
+    }
+
+    recordHoldActive = false;
+
+    chatRecordButton?.classList.remove(
+        "holding"
+    );
+}
+
+
+function beginRecordHold() {
+
+    if (
+        mediaBusy
+        ||
+        isRecording
+        ||
+        !chatRecordButton
+        ||
+        chatRecordButton.hidden
+    ) {
+        return;
+    }
+
+    cancelRecordHold();
+
+    recordHoldActive = true;
+
+    chatRecordButton.classList.add(
+        "holding"
+    );
+
+    recordHoldTimer =
+        setTimeout(
+            startRecording,
+            RECORD_HOLD_MS
+        );
+}
+
+
+async function startRecording() {
+
+    recordHoldTimer = null;
+
+    if (
+        !navigator.mediaDevices
+        ||
+        !navigator.mediaDevices.getUserMedia
+        ||
+        !window.MediaRecorder
+    ) {
+
+        cancelRecordHold();
+
+        showToast(
+            "Запись аудио недоступна в этом браузере.",
+            "error"
+        );
+
+        return;
+    }
+
+    try {
+
+        const stream =
+            await navigator
+                .mediaDevices
+                .getUserMedia({
+                    audio: true,
+                });
+
+        // Пока ждали разрешение микрофона —
+        // кнопку уже могли отпустить.
+        if (!recordHoldActive) {
+
+            stream
+                .getTracks()
+                .forEach(
+                    function (track) {
+                        track.stop();
+                    }
+                );
+
+            return;
+        }
+
+        recordHoldActive = false;
+
+        chatRecordButton?.classList.remove(
+            "holding"
+        );
+
+        const mimeType =
+            pickAudioMimeType();
+
+        mediaRecorder =
+            new MediaRecorder(
+                stream,
+                mimeType
+                    ? { mimeType }
+                    : undefined
+            );
+
+        recordedChunks = [];
+
+        mediaRecorder.ondataavailable =
+            function (event) {
+
+                if (event.data.size > 0) {
+
+                    recordedChunks.push(
+                        event.data
+                    );
+                }
+            };
+
+        mediaRecorder.onstop =
+            finishRecording;
+
+        mediaRecorder.start();
+
+        isRecording = true;
+
+        recordStartTime =
+            Date.now();
+
+        setRecordingUi(true);
+
+        recordTimerInterval =
+            setInterval(
+                updateRecordingTime,
+                500
+            );
+
+        updateRecordingTime();
+
+    } catch (error) {
+
+        cancelRecordHold();
+
+        console.error(
+            "Mic access error:",
+            error
+        );
+
+        showToast(
+            "Не удалось получить доступ к микрофону.",
+            "error"
+        );
+    }
+}
+
+
+function pickAudioMimeType() {
+
+    const candidates = [
+        "audio/webm;codecs=opus",
+        "audio/webm",
+        "audio/mp4",
+        "audio/ogg;codecs=opus",
+    ];
+
+    for (const type of candidates) {
+
+        if (
+            MediaRecorder.isTypeSupported(
+                type
+            )
+        ) {
+            return type;
+        }
+    }
+
+    return "";
+}
+
+
+function releaseRecordButton() {
+
+    if (isRecording) {
+
+        stopRecording();
+
+    } else {
+
+        cancelRecordHold();
+    }
+}
+
+
+function stopRecording() {
+
+    if (
+        mediaRecorder
+        &&
+        mediaRecorder.state !== "inactive"
+    ) {
+
+        mediaRecorder.stop();
+    }
+}
+
+
+function finishRecording() {
+
+    isRecording = false;
+
+    clearInterval(recordTimerInterval);
+
+    recordTimerInterval = null;
+
+    const stream =
+        mediaRecorder
+            ? mediaRecorder.stream
+            : null;
+
+    if (stream) {
+
+        stream
+            .getTracks()
+            .forEach(
+                function (track) {
+                    track.stop();
+                }
+            );
+    }
+
+    setRecordingUi(false);
+
+    if (recordedChunks.length === 0) {
+
+        showToast(
+            "Слишком короткое аудио.",
+            "error"
+        );
+
+        return;
+    }
+
+    const blob =
+        new Blob(
+            recordedChunks,
+            {
+                type:
+                    mediaRecorder
+                        ? mediaRecorder.mimeType
+                        : "audio/webm",
+            }
+        );
+
+    mediaRecorder = null;
+
+    recordedChunks = [];
+
+    sendRecordedAudio(blob);
+}
+
+
+function sendRecordedAudio(blob) {
+
+    if (blob.size < 200) {
+
+        showToast(
+            "Слишком короткое аудио.",
+            "error"
+        );
+
+        return;
+    }
+
+    const file =
+        blobToAudioFile(blob);
+
+    setMediaBusy(true);
+
+    uploadMediaFile(
+        file,
+        ""
+    )
+        .then(
+            function (ok) {
+
+                setMediaBusy(false);
+
+                showToast(
+                    ok
+                        ? "Голосовое сообщение отправлено"
+                        : "Не удалось отправить голосовое сообщение.",
+                    ok ? "ok" : "error"
+                );
+            }
+        );
+}
+
+
+function blobToAudioFile(blob) {
+
+    const type =
+        blob.type || "";
+
+    let extension =
+        ".weba";
+
+    if (type.startsWith("audio/webm")) {
+        extension = ".weba";
+
+    } else if (type.startsWith("audio/mp4")) {
+        extension = ".m4a";
+
+    } else if (type.startsWith("audio/mpeg")) {
+        extension = ".mp3";
+
+    } else if (type.startsWith("audio/ogg")) {
+        extension = ".ogg";
+
+    } else if (type.startsWith("audio/opus")) {
+        extension = ".opus";
+
+    } else if (type.startsWith("audio/wav")) {
+        extension = ".wav";
+    }
+
+    const name =
+        `voice_message_${Date.now()}${extension}`;
+
+    return new File(
+        [blob],
+        name,
+        {
+            type: type || "audio/webm",
+        }
+    );
+}
+
+
+function updateRecordingTime() {
+
+    const elapsed =
+        Date.now() - recordStartTime;
+
+    if (elapsed >= MAX_RECORD_MS) {
+
+        stopRecording();
+
+        return;
+    }
+
+    const totalSeconds =
+        Math.floor(
+            elapsed / 1000
+        );
+
+    const minutes =
+        String(
+            Math.floor(
+                totalSeconds / 60
+            )
+        ).padStart(2, "0");
+
+    const seconds =
+        String(
+            totalSeconds % 60
+        ).padStart(2, "0");
+
+    if (chatRecordingTime) {
+
+        chatRecordingTime.textContent =
+            `${minutes}:${seconds}`;
+    }
+}
+
+
+function setRecordingUi(active) {
+
+    if (chatRecordingBar) {
+        chatRecordingBar.hidden =
+            !active;
+    }
+
+    if (chatRecordButton) {
+
+        chatRecordButton.classList.toggle(
+            "recording",
+            active
+        );
+    }
+
+    const chatInputElement =
+        document.querySelector(
+            ".chat-input"
+        );
+
+    if (chatInputElement) {
+
+        chatInputElement.classList.toggle(
+            "recording",
+            active
+        );
+    }
+
+    if (chatAttachButton) {
+        chatAttachButton.disabled =
+            active;
+    }
+
+    if (messageInput) {
+        messageInput.hidden =
+            active;
+    }
+
+    const replyPreview =
+        document.getElementById(
+            "chat-reply-preview"
+        );
+
+    if (replyPreview) {
+        replyPreview.hidden =
+            active;
+    }
+
+    if (messageSubmitButton) {
+        messageSubmitButton.hidden =
+            active
+            ||
+            !messageInput
+            ||
+            !messageInput.value.trim();
+    }
+}
+
+
+if (chatRecordButton) {
+
+    chatRecordButton.addEventListener(
+        "pointerdown",
+        beginRecordHold
+    );
+
+    chatRecordButton.addEventListener(
+        "pointerup",
+        releaseRecordButton
+    );
+
+    chatRecordButton.addEventListener(
+        "pointercancel",
+        function () {
+
+            if (!isRecording) {
+                cancelRecordHold();
+            }
+        }
+    );
+
+    chatRecordButton.addEventListener(
+        "pointerleave",
+        function () {
+
+            if (!isRecording) {
+                cancelRecordHold();
+            }
+        }
+    );
+
+    chatRecordButton.addEventListener(
+        "contextmenu",
+        function (event) {
+            event.preventDefault();
+        }
+    );
+}
+
+
+// Отпустили кнопку где угодно — запись завершается.
+document.addEventListener(
+    "pointerup",
+    function () {
+
+        if (isRecording) {
+            stopRecording();
+        }
+    }
+);
+
+
+updateInputMode();
 
 
 // ==================================================
@@ -2186,6 +2748,10 @@ function setMediaBusy(busy) {
 
     if (messageSubmitButton) {
         messageSubmitButton.disabled = busy;
+    }
+
+    if (chatRecordButton) {
+        chatRecordButton.disabled = busy;
     }
 
     if (chatUploadSend) {
@@ -2398,6 +2964,8 @@ if (chatFileInput) {
                     messageInput.value.trim();
 
                 messageInput.value = "";
+
+                updateInputMode();
             }
 
             showUploadPanel();
