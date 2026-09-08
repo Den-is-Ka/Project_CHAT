@@ -77,10 +77,17 @@ ASGI_APPLICATION = 'config.asgi.application'
 # Database
 # https://docs.djangoproject.com/en/6.1/ref/settings/#databases
 
+# Где лежит SQLite-файл. В Docker настраивается на постоянный каталог,
+# чтобы WAL-файлы (-wal/-shm) сохранялись между перезапусками.
+DB_PATH = os.getenv(
+    "DB_PATH",
+    str(BASE_DIR / "db.sqlite3"),
+)
+
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'NAME': DB_PATH,
         'OPTIONS': {
             # Снижает ошибки «database is locked» при конкурентных записях.
             'timeout': 20,
