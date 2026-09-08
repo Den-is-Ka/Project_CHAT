@@ -1204,7 +1204,9 @@ button {
     z-index: 10;
 
     display: flex;
-    align-items: center;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    align-items: stretch;
 
     gap: 6px;
 
@@ -1229,6 +1231,8 @@ button {
 .hover-menu-btn {
     display: inline-flex;
     align-items: center;
+
+    position: relative;
 
     gap: 4px;
 
@@ -1582,6 +1586,10 @@ button {
     bottom: auto;
 
     left: 0;
+}
+
+.emoji-picker[hidden] {
+    display: none;
 }
 
 .emoji-picker {

@@ -655,7 +655,7 @@ function addMessage(data) {
 
         const hoverMenu =
             createMessageHoverMenu(
-                data.id
+                data
             );
 
         content.appendChild(hoverMenu);
@@ -678,7 +678,7 @@ function addMessage(data) {
                     );
 
                 if (picker) {
-                    picker.remove();
+                    picker.hidden = true;
                 }
             }
         );
@@ -1079,7 +1079,11 @@ function createReactionsBar(data, currentUser, isOwn) {
 }
 
 
-function createMessageHoverMenu(messageId) {
+function createMessageHoverMenu(data) {
+
+    const messageId = data.id;
+
+    const messageUsername = data.username;
 
     const menu =
         document.createElement("div");
@@ -1105,17 +1109,35 @@ function createMessageHoverMenu(messageId) {
     reactionButton.textContent =
         "Реакция";
 
+    const emojiPicker =
+        createEmojiPicker(
+            messageId,
+            chatConfig.username
+        );
+
+    emojiPicker.classList.add(
+        "hover-emoji-picker"
+    );
+
+    emojiPicker.hidden = true;
+
+    // По наведению на "Реакция" появляется список смайлов.
     reactionButton.addEventListener(
-        "click",
-        function (event) {
-
-            event.stopPropagation();
-
-            toggleHoverEmojiPicker(
-                menu,
-                messageId
-            );
+        "mouseenter",
+        function () {
+            emojiPicker.hidden = false;
         }
+    );
+
+    reactionButton.addEventListener(
+        "mouseleave",
+        function () {
+            emojiPicker.hidden = true;
+        }
+    );
+
+    reactionButton.appendChild(
+        emojiPicker
     );
 
 
@@ -1144,36 +1166,89 @@ function createMessageHoverMenu(messageId) {
     );
 
 
+    const messageButton =
+        document.createElement("button");
+
+    messageButton.type = "button";
+
+    messageButton.className =
+        "hover-menu-btn hover-menu-message";
+
+    messageButton.title =
+        "Написать личное сообщение";
+
+    messageButton.textContent =
+        "Сообщение";
+
+    messageButton.addEventListener(
+        "click",
+        function () {
+
+            openDirectMessage(
+                messageUsername
+            );
+        }
+    );
+
+
     menu.appendChild(reactionButton);
     menu.appendChild(replyButton);
+    menu.appendChild(messageButton);
 
     return menu;
 }
 
 
-function toggleHoverEmojiPicker(menu, messageId) {
+async function openDirectMessage(username) {
 
-    const existing =
-        menu.querySelector(
-            ".emoji-picker"
-        );
-
-    if (existing) {
-        existing.remove();
+    if (!username) {
         return;
     }
 
-    const picker =
-        createEmojiPicker(
-            messageId,
-            chatConfig.username
+    try {
+
+        const response =
+            await apiRequest(
+                chatConfig.directMessageUrl,
+                {
+                    method: "POST",
+                    body: new URLSearchParams({
+                        username: username,
+                    }),
+                }
+            );
+
+        const data =
+            await response.json();
+
+        if (
+            data
+            &&
+            data.success
+            &&
+            data.url
+        ) {
+            window.location.href =
+                data.url;
+        }
+        else if (
+            data
+            &&
+            data.message
+        ) {
+            showToast(
+                data.message,
+                "error"
+            );
+        }
+    }
+    catch (error) {
+
+        showToast(
+            "Не удалось открыть личный чат.",
+            "error"
         );
-
-    picker.classList.add(
-        "hover-emoji-picker"
-    );
-
-    menu.appendChild(picker);
+    }
 }
 
 
