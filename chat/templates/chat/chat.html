@@ -608,10 +608,10 @@
                         {% if chat_room.avatar %}
                             <img
                                 src="{{ chat_room.avatar.url }}"
-                                alt="{{ chat_room.name }}"
+                                alt="{{ chat_room.display_name|default:chat_room.name }}"
                             >
                         {% else %}
-                            {{ chat_room.name|first|upper }}
+                            {{ chat_room.display_name|default:chat_room.name|first|upper }}
                         {% endif %}
 
                         {% if chat_room.is_private %}
@@ -635,7 +635,7 @@
                     </div>
 
                     <span class="room-name">
-                        {{ chat_room.name }}
+                        {{ chat_room.display_name|default:chat_room.name }}
                     </span>
 
                 </a>
@@ -700,10 +700,10 @@
                         {% if room.avatar %}
                             <img
                                 src="{{ room.avatar.url }}"
-                                alt="{{ room.name }}"
+                                alt="{{ room.display_name|default:room.name }}"
                             >
                         {% else %}
-                            {{ room.name|first|upper }}
+                            {{ room.display_name|default:room.name|first|upper }}
                         {% endif %}
                     </span>
 
@@ -711,7 +711,7 @@
                         id="room-title-name"
                         class="room-title-name"
                     >
-                        {{ room.name }}
+                        {{ room.display_name|default:room.name }}
                     </span>
 
                     <span class="room-title-arrow">
@@ -745,17 +745,17 @@
                         {% if room.avatar %}
                             <img
                                 src="{{ room.avatar.url }}"
-                                alt="{{ room.name }}"
+                                alt="{{ room.display_name|default:room.name }}"
                             >
                         {% else %}
-                            {{ room.name|first|upper }}
+                            {{ room.display_name|default:room.name|first|upper }}
                         {% endif %}
                     </div>
 
                     <div class="room-menu-room-info">
 
                         <strong id="room-menu-name">
-                            {{ room.name }}
+                            {{ room.display_name|default:room.name }}
                         </strong>
 
                         <span id="room-menu-description">
@@ -1239,6 +1239,9 @@
 
             readUrl:
                 "{% url 'room_read' room_id=room.id %}",
+
+            directMessageUrl:
+                "{% url 'direct_message' %}",
 
 
 
