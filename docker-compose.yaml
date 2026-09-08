@@ -7,10 +7,15 @@ services:
       sh -c "
       python manage.py migrate &&
       python manage.py collectstatic --noinput &&
-      daphne -b 0.0.0.0 -p 8000 config.asgi:application
+      daphne --proxy-headers -b 0.0.0.0 -p 8000 config.asgi:application
       "
     env_file:
       - .env
+    environment:
+      # В Docker канал WebSocket и кэш должны быть на Redis,
+      # чтобы статусы и группы работали у всех workers.
+      USE_REDIS_CHANNEL_LAYER: "True"
+      REDIS_HOST: redis
     depends_on:
       redis:
         condition: service_healthy
