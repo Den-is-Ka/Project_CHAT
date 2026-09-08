@@ -1029,6 +1029,21 @@
                 >
 
                     <div
+                        id="chat-recording-bar"
+                        class="chat-recording-bar"
+                        hidden
+                    >
+                        <span class="chat-recording-dot"></span>
+                        <span
+                            id="chat-recording-time"
+                            class="chat-recording-time"
+                        >0:00</span>
+                        <span class="chat-recording-hint">
+                            Отпустите, чтобы отправить
+                        </span>
+                    </div>
+
+                    <div
                         id="chat-reply-preview"
                         class="chat-reply-preview"
                         hidden
@@ -1045,10 +1060,37 @@
 
                 <button
                     type="button"
+                    id="chat-record-button"
+                    class="chat-input-button chat-record-button"
+                    title="Записать голосовое сообщение"
+                    aria-label="Записать голосовое сообщение"
+                >
+                    <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 24 24"
+                        width="20"
+                        height="20"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        aria-hidden="true"
+                    >
+                        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                        <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                        <line x1="12" y1="19" x2="12" y2="23" />
+                        <line x1="8" y1="23" x2="16" y2="23" />
+                    </svg>
+                </button>
+
+                <button
+                    type="button"
                     id="chat-message-submit"
                     class="chat-input-button chat-send-button"
                     title="Отправить сообщение"
                     aria-label="Отправить сообщение"
+                    hidden
                 >
                     <svg
                         xmlns="http://www.w3.org/2000/svg"
