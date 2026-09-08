@@ -2,11 +2,14 @@ from io import BytesIO
 
 from django import forms
 from django.contrib.auth import get_user_model
+from django.contrib.auth.password_validation import validate_password
 from django.core.files.base import ContentFile
 
 from .utils import resize_avatar
 
 User = get_user_model()
+
+MIN_PASSWORD_LENGTH = 8
 
 
 class RegistrationForm(forms.ModelForm):
@@ -15,6 +18,7 @@ class RegistrationForm(forms.ModelForm):
     password = forms.CharField(
         label="Пароль",
         widget=forms.PasswordInput,
+        min_length=MIN_PASSWORD_LENGTH,
     )
 
     password_confirm = forms.CharField(
@@ -31,6 +35,26 @@ class RegistrationForm(forms.ModelForm):
             "password_confirm",
         )
 
+    def clean_email(self):
+        email = self.cleaned_data.get("email", "").strip().lower()
+
+        if not email:
+            raise forms.ValidationError(
+                "Укажите email."
+            )
+
+        if (
+            User.objects
+            .filter(email__iexact=email)
+            .exclude(pk=self.instance.pk)
+            .exists()
+        ):
+            raise forms.ValidationError(
+                "Пользователь с таким email уже существует."
+            )
+
+        return email
+
     def clean(self):
         cleaned_data = super().clean()
 
@@ -46,6 +70,18 @@ class RegistrationForm(forms.ModelForm):
                 "Пароли не совпадают."
             )
 
+        # Применяем системные валидаторы пароля
+        # (AUTH_PASSWORD_VALIDATORS из settings).
+        if password:
+            user = self.instance
+            user.username = cleaned_data.get("username", user.username)
+            user.email = cleaned_data.get("email", user.email)
+
+            try:
+                validate_password(password, user=user)
+            except forms.ValidationError as error:
+                self.add_error("password", error)
+
         return cleaned_data
 
     def save(self, commit=True):
@@ -59,7 +95,6 @@ class RegistrationForm(forms.ModelForm):
             user.save()
 
         return user
-
 
 
 class ProfileForm(forms.ModelForm):
@@ -91,6 +126,26 @@ class ProfileForm(forms.ModelForm):
                 }
             ),
         }
+
+    def clean_email(self):
+        email = self.cleaned_data.get("email", "").strip().lower()
+
+        if not email:
+            raise forms.ValidationError(
+                "Укажите email."
+            )
+
+        if (
+            User.objects
+            .filter(email__iexact=email)
+            .exclude(pk=self.instance.pk)
+            .exists()
+        ):
+            raise forms.ValidationError(
+                "Пользователь с таким email уже существует."
+            )
+
+        return email
 
     def clean_avatar(self):
         avatar = self.cleaned_data.get("avatar")
