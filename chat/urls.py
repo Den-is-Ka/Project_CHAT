@@ -3,6 +3,7 @@ from django.urls import path
 from .views import (
     AddRoomMemberView,
     CreateRoomView,
+    DirectMessageView,
     JoinRoomView,
     LeaveRoomView,
     MarkRoomReadView,
@@ -74,6 +75,12 @@ urlpatterns = [
         "rooms/<int:room_id>/read/",
         MarkRoomReadView.as_view(),
         name="room_read",
+    ),
+
+    path(
+        "direct/",
+        DirectMessageView.as_view(),
+        name="direct_message",
     ),
 
     path(
