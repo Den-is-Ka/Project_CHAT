@@ -4,6 +4,13 @@ let chatSocket = null;
 let reconnectTimeout = null;
 let shouldReconnect = true;
 
+let reconnectAttempts = 0;
+
+const RECONNECT_BASE_DELAY = 1000;
+const RECONNECT_MAX_DELAY = 10000;
+
+let pendingMessages = [];
+
 const isAuthenticated = chatConfig.isAuthenticated;
 
 
@@ -208,6 +215,15 @@ function connectWebSocket() {
         handleWebSocketClose;
 
 
+    chatSocket.onopen =
+        function () {
+
+            reconnectAttempts = 0;
+
+            flushPendingMessages();
+        };
+
+
     chatSocket.onerror =
         function (error) {
 
@@ -217,6 +233,46 @@ function connectWebSocket() {
             );
         };
 }
+
+
+function flushPendingMessages() {
+
+    if (
+        !chatSocket
+        ||
+        chatSocket.readyState !== WebSocket.OPEN
+    ) {
+        return;
+    }
+
+    while (pendingMessages.length) {
+
+        chatSocket.send(
+            JSON.stringify(
+                pendingMessages.shift()
+            )
+        );
+    }
+}
+
+
+// Heartbeat: держим соединение живым, чтобы его не закрывали
+// прокси/балансировщики по idle-timeout.
+setInterval(function () {
+
+    if (
+        chatSocket
+        &&
+        chatSocket.readyState === WebSocket.OPEN
+    ) {
+
+        chatSocket.send(
+            JSON.stringify({
+                type: "ping",
+            })
+        );
+    }
+}, 25000);
 
 
 function handleWebSocketMessage(event) {
@@ -229,11 +285,23 @@ function handleWebSocketMessage(event) {
 
         case "history":
 
+            let addedMessages =
+                false;
+
             data.messages.forEach(
-                addMessage
+                function (messageData) {
+
+                    if (addMessage(messageData)) {
+                        addedMessages = true;
+                    }
+                }
             );
 
-            scrollToBottom(false);
+            // Скроллим вниз только если появились новые сообщения
+            // (чтобы не сбрасывать позицию при переподключении).
+            if (addedMessages) {
+                scrollToBottom(false);
+            }
 
             break;
 
@@ -275,6 +343,16 @@ function handleWebSocketMessage(event) {
             break;
 
 
+        case "reaction":
+
+            updateMessageReactions(
+                data.message_id,
+                data.reactions || []
+            );
+
+            break;
+
+
         default:
 
             console.warn(
@@ -285,7 +363,7 @@ function handleWebSocketMessage(event) {
 }
 
 
-function handleWebSocketClose() {
+function handleWebSocketClose(event) {
 
     console.log(
         "WebSocket connection closed"
@@ -295,16 +373,76 @@ function handleWebSocketClose() {
         return;
     }
 
+    // 4000 — комната не найдена, 4001 — нет доступа.
+    // Переподключаться бессмысленно.
+    if (
+        event.code === 4000
+        ||
+        event.code === 4001
+    ) {
+        shouldReconnect = false;
+        return;
+    }
+
     clearTimeout(
         reconnectTimeout
     );
 
+    // Экспоненциальная задержка с ограничением сверху.
+    const delay =
+        Math.min(
+            RECONNECT_BASE_DELAY
+                * Math.pow(2, reconnectAttempts),
+            RECONNECT_MAX_DELAY
+        );
+
+    reconnectAttempts += 1;
+
     reconnectTimeout =
         setTimeout(
             connectWebSocket,
-            3000
+            delay
         );
 }
+
+
+// При реальной навигации/закрытии вкладки прекращаем
+// переподключения, чтобы "старая" страница не открывала
+// второй сокет в момент загрузки новой.
+window.addEventListener(
+    "pagehide",
+    function () {
+
+        shouldReconnect = false;
+
+        clearTimeout(
+            reconnectTimeout
+        );
+
+        if (chatSocket) {
+
+            chatSocket.onclose = null;
+
+            chatSocket.close();
+        }
+    }
+);
+
+
+// Возврат из bfcache (назад/вперёд) — страница осталась живой,
+// но сокет мёртв: открываем его заново.
+window.addEventListener(
+    "pageshow",
+    function (event) {
+
+        if (event.persisted) {
+
+            shouldReconnect = true;
+
+            connectWebSocket();
+        }
+    }
+);
 
 
 // ==================================================
@@ -351,7 +489,22 @@ function updateOnlineUsers(users) {
 function addMessage(data) {
 
     if (!chatLog) {
-        return;
+        return false;
+    }
+
+    // Защита от дублей: после переподключения сервер повторно
+    // присылает историю — сообщение с уже отрисованным id
+    // просто пропускаем.
+    if (data.id) {
+
+        const existing =
+            chatLog.querySelector(
+                `[data-message-id="${String(data.id)}"]`
+            );
+
+        if (existing) {
+            return false;
+        }
     }
 
 
@@ -410,13 +563,55 @@ function addMessage(data) {
     username.appendChild(usernameText);
 
 
-    const text =
+    const header =
         document.createElement("div");
 
-    text.classList.add("text");
+    header.classList.add(
+        "message-header"
+    );
 
-    text.textContent =
-        data.message;
+    header.appendChild(username);
+
+    content.appendChild(header);
+
+
+    // Цитата исходного сообщения для reply.
+    if (data.reply_to) {
+
+        const quote =
+            createReplyQuote(
+                data.reply_to
+            );
+
+        content.appendChild(quote);
+    }
+
+
+    if (data.message) {
+
+        const text =
+            document.createElement("div");
+
+        text.classList.add("text");
+
+        text.textContent =
+            data.message;
+
+        content.appendChild(text);
+    }
+
+
+    if (data.attachment) {
+
+        const attachment =
+            createAttachment(
+                data.attachment,
+                data.attachment_type,
+                data.attachment_name
+            );
+
+        content.appendChild(attachment);
+    }
 
 
     const time =
@@ -439,9 +634,7 @@ function addMessage(data) {
         );
 
 
-    content.appendChild(username);
-    content.appendChild(text);
-    content.appendChild(time);
+    header.appendChild(time);
 
 
     messageElement.appendChild(
@@ -449,9 +642,1100 @@ function addMessage(data) {
     );
 
 
+    const isOwn =
+        messageElement.classList.contains(
+            "own"
+        );
+
+    // Всплывающее меню "Реакция / Ответить" —
+    // только на чужих сообщениях, при наведении.
+    if (!isOwn) {
+
+        const hoverMenu =
+            createMessageHoverMenu(
+                data.id
+            );
+
+        content.appendChild(hoverMenu);
+
+        content.addEventListener(
+            "mouseenter",
+            function () {
+                hoverMenu.hidden = false;
+            }
+        );
+
+        content.addEventListener(
+            "mouseleave",
+            function () {
+                hoverMenu.hidden = true;
+
+                const picker =
+                    hoverMenu.querySelector(
+                        ".emoji-picker"
+                    );
+
+                if (picker) {
+                    picker.remove();
+                }
+            }
+        );
+    }
+
+
+    // Реакции — в теле сообщения, в нижнем левом углу пузыря.
+    const reactionsBar =
+        createReactionsBar(
+            data,
+            currentUser,
+            isOwn
+        );
+
+    content.appendChild(
+        reactionsBar
+    );
+
+    // Если реакции есть — резервируем место внизу пузыря,
+    // чтобы чипы не накладывались на текст.
+    if (
+        reactionsBar.querySelectorAll(
+            ".reaction-chip"
+        ).length
+    ) {
+        content.classList.add(
+            "has-reactions"
+        );
+    }
+
+
     chatLog.appendChild(
         messageElement
     );
+
+
+    messageElement.dataset.messageId =
+        String(data.id);
+
+    // Сохраняем исходные данные для построения
+    // цитаты при ответе (reply).
+    messageElement.__messageData =
+        data;
+
+    return true;
+}
+
+
+// ==================================================
+// Message reactions & replies
+// ==================================================
+
+const EMOJI_SET = [
+    "👍", "❤️", "😂", "😮", "😢", "🔥", "👏", "🎉",
+];
+
+
+let pendingReply = null;
+
+
+function createReplyQuote(replyTo) {
+
+    const quote =
+        document.createElement("div");
+
+    quote.classList.add(
+        "reply-quote"
+    );
+
+    const header =
+        document.createElement("div");
+
+    header.classList.add(
+        "reply-quote-header"
+    );
+
+
+    const avatar =
+        createAvatar(
+            replyTo.username,
+            replyTo.avatar,
+            "reply-quote-avatar"
+        );
+
+    header.appendChild(avatar);
+
+
+    const username =
+        document.createElement("span");
+
+    username.textContent =
+        replyTo.username;
+
+    header.appendChild(username);
+
+
+    const time =
+        document.createElement("span");
+
+    time.classList.add(
+        "reply-quote-time"
+    );
+
+    const date =
+        new Date(replyTo.created_at);
+
+
+    time.textContent =
+        date.toLocaleTimeString(
+            [],
+            {
+                hour: "2-digit",
+                minute: "2-digit",
+            }
+        );
+
+    header.appendChild(time);
+
+    quote.appendChild(header);
+
+
+    if (replyTo.attachment_type) {
+
+        const attachmentHint =
+            document.createElement("div");
+
+        attachmentHint.classList.add(
+            "reply-quote-attachment"
+        );
+
+        const typeNames = {
+            image: "Фото",
+            video: "Видео",
+            audio: "Аудио",
+            file: "Файл",
+        };
+
+        attachmentHint.textContent =
+            "📎 " + (
+                typeNames[replyTo.attachment_type]
+                || replyTo.attachment_type
+            );
+
+        quote.appendChild(attachmentHint);
+    }
+
+
+    if (replyTo.message) {
+
+        const text =
+            document.createElement("div");
+
+        text.classList.add(
+            "reply-quote-text"
+        );
+
+        text.textContent =
+            replyTo.message;
+
+        quote.appendChild(text);
+    }
+
+
+    return quote;
+}
+
+
+function openReplyPreview(messageId, messageElement) {
+
+    if (messageId === pendingReply) {
+        cancelReplyPreview();
+        return;
+    }
+
+    const messageData =
+        getMessageData(
+            messageId
+        );
+
+    pendingReply = messageId;
+
+    renderReplyPreview(
+        messageId,
+        messageData
+    );
+
+    setInputPlaceholderReply();
+
+    focusMessageInput();
+}
+
+
+function renderReplyPreview(messageId, messageData) {
+
+    const preview =
+        document.createElement("div");
+
+    preview.classList.add(
+        "reply-preview"
+    );
+
+
+    const cover =
+        document.createElement("div");
+
+    cover.classList.add(
+        "reply-preview-block"
+    );
+
+
+    const label =
+        document.createElement("span");
+
+    label.classList.add(
+        "reply-preview-label"
+    );
+
+    label.textContent = "Ответ на:";
+
+    cover.appendChild(label);
+
+
+    if (messageData) {
+
+        const quote =
+            createReplyQuote(
+                messageData
+            );
+
+        cover.appendChild(quote);
+    }
+    else {
+
+        const text =
+            document.createElement("span");
+
+        text.textContent =
+            "#" + messageId;
+
+        cover.appendChild(text);
+    }
+
+
+    const close =
+        document.createElement("button");
+
+    close.type = "button";
+
+    close.classList.add(
+        "reply-preview-close"
+    );
+
+    close.title = "Отменить ответ";
+
+    close.setAttribute(
+        "aria-label",
+        "Отменить ответ"
+    );
+
+    close.textContent = "✕";
+
+    close.addEventListener(
+        "click",
+        cancelReplyPreview
+    );
+
+    preview.appendChild(cover);
+    preview.appendChild(close);
+
+
+    const replyPreviewWrap =
+        document.getElementById(
+            "chat-reply-preview"
+        );
+
+    if (!replyPreviewWrap) {
+        return;
+    }
+
+    replyPreviewWrap.innerHTML = "";
+    replyPreviewWrap.appendChild(preview);
+
+    replyPreviewWrap.hidden = false;
+}
+
+
+function cancelReplyPreview() {
+
+    pendingReply = null;
+
+    const replyPreviewWrap =
+        document.getElementById(
+            "chat-reply-preview"
+        );
+
+    if (!replyPreviewWrap) {
+        return;
+    }
+
+    replyPreviewWrap.innerHTML = "";
+    replyPreviewWrap.hidden = true;
+
+    setInputPlaceholderDefault();
+}
+
+
+function setInputPlaceholderReply() {
+
+    const input =
+        document.getElementById(
+            "chat-message-input"
+        );
+
+    if (!input) {
+        return;
+    }
+
+    input.placeholder =
+        "Введите ответ на сообщение...";
+}
+
+
+function setInputPlaceholderDefault() {
+
+    const input =
+        document.getElementById(
+            "chat-message-input"
+        );
+
+    if (!input) {
+        return;
+    }
+
+    input.placeholder =
+        "Введите сообщение...";
+}
+
+
+function focusMessageInput() {
+
+    const input =
+        document.getElementById(
+            "chat-message-input"
+        );
+
+    if (!input) {
+        return;
+    }
+
+    input.focus();
+}
+
+
+function getMessageData(messageId) {
+
+    const element =
+        findMessageElement(messageId);
+
+    if (!element) {
+        return null;
+    }
+
+    return element.__messageData || null;
+}
+
+
+function createReactionsBar(data, currentUser, isOwn) {
+
+    const bar =
+        document.createElement("div");
+
+    bar.classList.add(
+        "message-reactions"
+    );
+
+    bar.dataset.interactive =
+        isOwn ? "0" : "1";
+
+
+    const reactions =
+        data.reactions || [];
+
+
+    reactions.forEach(function (reaction) {
+
+        bar.appendChild(
+            createReactionChip(
+                reaction,
+                data.id,
+                currentUser,
+                !isOwn
+            )
+        );
+    });
+
+
+    return bar;
+}
+
+
+function createMessageHoverMenu(messageId) {
+
+    const menu =
+        document.createElement("div");
+
+    menu.classList.add(
+        "message-hover-menu"
+    );
+
+    menu.hidden = true;
+
+
+    const reactionButton =
+        document.createElement("button");
+
+    reactionButton.type = "button";
+
+    reactionButton.className =
+        "hover-menu-btn hover-menu-reaction";
+
+    reactionButton.title =
+        "Добавить реакцию";
+
+    reactionButton.textContent =
+        "Реакция";
+
+    reactionButton.addEventListener(
+        "click",
+        function (event) {
+
+            event.stopPropagation();
+
+            toggleHoverEmojiPicker(
+                menu,
+                messageId
+            );
+        }
+    );
+
+
+    const replyButton =
+        document.createElement("button");
+
+    replyButton.type = "button";
+
+    replyButton.className =
+        "hover-menu-btn hover-menu-reply";
+
+    replyButton.title = "Ответить";
+
+    replyButton.textContent =
+        "Ответить";
+
+    replyButton.addEventListener(
+        "click",
+        function () {
+
+            openReplyPreview(
+                messageId,
+                findMessageElement(messageId)
+            );
+        }
+    );
+
+
+    menu.appendChild(reactionButton);
+    menu.appendChild(replyButton);
+
+    return menu;
+}
+
+
+function toggleHoverEmojiPicker(menu, messageId) {
+
+    const existing =
+        menu.querySelector(
+            ".emoji-picker"
+        );
+
+    if (existing) {
+        existing.remove();
+        return;
+    }
+
+    const picker =
+        createEmojiPicker(
+            messageId,
+            chatConfig.username
+        );
+
+    picker.classList.add(
+        "hover-emoji-picker"
+    );
+
+    menu.appendChild(picker);
+}
+
+
+function createReactionChip(
+    reaction,
+    messageId,
+    currentUser,
+    interactive
+) {
+
+    const chip =
+        document.createElement(
+            interactive
+                ? "button"
+                : "span"
+        );
+
+    if (interactive) {
+        chip.type = "button";
+    }
+
+    chip.classList.add(
+        "reaction-chip"
+    );
+
+    if (reaction.reacted_by_me) {
+
+        chip.classList.add(
+            "active"
+        );
+    }
+
+
+    const emoji =
+        document.createElement("span");
+
+    emoji.classList.add(
+        "reaction-emoji"
+    );
+
+    emoji.textContent =
+        reaction.emoji;
+
+
+    const count =
+        document.createElement("span");
+
+    count.classList.add(
+        "reaction-count"
+    );
+
+    count.textContent =
+        reaction.count;
+
+
+    chip.appendChild(emoji);
+    chip.appendChild(count);
+
+
+    if (interactive) {
+
+        chip.addEventListener(
+            "click",
+            function (event) {
+
+                event.stopPropagation();
+
+                sendReaction(
+                    messageId,
+                    reaction.emoji
+                );
+            }
+        );
+    }
+
+
+    return chip;
+}
+
+
+function createEmojiPicker(messageId, currentUser) {
+
+    const picker =
+        document.createElement("div");
+
+    picker.classList.add(
+        "emoji-picker"
+    );
+
+
+    EMOJI_SET.forEach(function (emoji) {
+
+        const item =
+            document.createElement("button");
+
+        item.type = "button";
+
+        item.className = "emoji-option";
+
+        item.textContent = emoji;
+
+        item.title = emoji;
+
+        item.addEventListener(
+            "click",
+            function () {
+
+                sendReaction(
+                    messageId,
+                    emoji
+                );
+
+                picker.remove();
+            }
+        );
+
+        picker.appendChild(item);
+    });
+
+
+    return picker;
+}
+
+
+function sendReaction(messageId, emoji) {
+
+    if (
+        !chatSocket
+        ||
+        chatSocket.readyState !== WebSocket.OPEN
+    ) {
+
+        showToast(
+            "Соединение с чатом потеряно.",
+            "error"
+        );
+
+        return;
+    }
+
+    chatSocket.send(
+        JSON.stringify({
+            type: "react",
+            message_id: messageId,
+            emoji: emoji,
+        })
+    );
+}
+
+
+function updateMessageReactions(messageId, reactions) {
+
+    const messageElement =
+        findMessageElement(messageId);
+
+    if (!messageElement) {
+        return;
+    }
+
+    const bar =
+        messageElement.querySelector(
+            ".message-reactions"
+        );
+
+    if (!bar) {
+        return;
+    }
+
+    const currentUser =
+        chatConfig.username;
+
+    const interactive =
+        bar.dataset.interactive !== "0";
+
+    // Пересобираем чипы, сохраняя агрегатную truth и local state.
+    // Запоминаем, на какие эмодзи текущий пользователь уже реагировал,
+    // ДО удаления старых чипов (поле reacted_by_me в live-рассылке
+    // отсутствует — его нужно восстановить локально).
+    const myActiveEmojis =
+        new Set();
+
+    const oldChips =
+        bar.querySelectorAll(
+            ".reaction-chip"
+        );
+
+    oldChips.forEach(function (chip) {
+
+        if (chip.classList.contains("active")) {
+
+            const chipEmoji =
+                chip.querySelector(
+                    ".reaction-emoji"
+                )?.textContent;
+
+            if (chipEmoji) {
+                myActiveEmojis.add(chipEmoji);
+            }
+        }
+
+        chip.remove();
+    });
+
+    // Поле reacted_by_me в live-рассылке отсутствует,
+    // поэтому обновляем его локально по текущему пользователю.
+    const localReactions =
+        reactions.map(function (reaction) {
+
+            const copy = {
+                ...reaction,
+            };
+
+            copy.reacted_by_me =
+                myActiveEmojis.has(
+                    reaction.emoji
+                );
+
+            return copy;
+        });
+
+    localReactions.forEach(function (reaction) {
+
+        bar.appendChild(
+            createReactionChip(
+                reaction,
+                messageId,
+                currentUser,
+                interactive
+            )
+        );
+    });
+
+    // Резервируем место внизу пузыря, если реакции появились.
+    const content =
+        messageElement.querySelector(
+            ".message-content"
+        );
+
+    if (content) {
+
+        content.classList.toggle(
+            "has-reactions",
+            bar.querySelectorAll(
+                ".reaction-chip"
+            ).length > 0
+        );
+    }
+}
+
+
+function findMessageElement(messageId) {
+
+    if (!chatLog) {
+        return null;
+    }
+
+    return chatLog.querySelector(
+        `[data-message-id="${String(messageId)}"]`
+    );
+}
+
+
+function createAttachment(
+    url,
+    type,
+    name
+) {
+
+    const wrap =
+        document.createElement("div");
+
+    wrap.classList.add(
+        "message-attachment"
+    );
+
+
+    if (type === "image") {
+
+        const link =
+            document.createElement("a");
+
+        link.href = url;
+
+        link.target = "_blank";
+
+        link.rel = "noopener";
+
+
+        const image =
+            document.createElement("img");
+
+        image.src = url;
+
+        image.alt =
+            name || "Изображение";
+
+        image.loading = "lazy";
+
+        link.appendChild(image);
+
+
+        const mediaWrap =
+            createMediaWrap();
+
+        mediaWrap.appendChild(link);
+
+        mediaWrap.appendChild(
+            createDownloadIcon(
+                url,
+                name
+            )
+        );
+
+        wrap.appendChild(mediaWrap);
+
+    } else if (type === "video") {
+
+        const video =
+            document.createElement("video");
+
+        video.src = url;
+
+        video.controls = true;
+
+        video.preload = "metadata";
+
+
+        const mediaWrap =
+            createMediaWrap();
+
+        mediaWrap.appendChild(video);
+
+        mediaWrap.appendChild(
+            createDownloadIcon(
+                url,
+                name
+            )
+        );
+
+        wrap.appendChild(mediaWrap);
+
+    } else if (type === "audio") {
+
+        const audio =
+            document.createElement("audio");
+
+        audio.src = url;
+
+        audio.controls = true;
+
+        audio.preload = "metadata";
+
+        wrap.appendChild(audio);
+
+        wrap.appendChild(
+            createDownloadLink(
+                url,
+                name
+            )
+        );
+
+    } else {
+
+        const link =
+            document.createElement("a");
+
+        link.href = url;
+
+        link.target = "_blank";
+
+        link.rel = "noopener";
+
+        link.download =
+            name || "файл";
+
+        link.classList.add(
+            "message-attachment-link"
+        );
+
+        link.textContent =
+            name || "Скачать файл";
+
+        wrap.appendChild(link);
+    }
+
+
+    return wrap;
+}
+
+
+function createMediaWrap() {
+
+    const mediaWrap =
+        document.createElement("div");
+
+    mediaWrap.classList.add(
+        "attachment-media-wrap"
+    );
+
+    return mediaWrap;
+}
+
+
+function createDownloadIcon(
+    url,
+    name
+) {
+
+    const link =
+        document.createElement("a");
+
+    link.href = url;
+
+    link.download =
+        name || "файл";
+
+    link.classList.add(
+        "attachment-download-icon"
+    );
+
+    link.title = "Скачать";
+
+    link.setAttribute(
+        "aria-label",
+        "Скачать"
+    );
+
+    const svg =
+        document.createElementNS(
+            "http://www.w3.org/2000/svg",
+            "svg"
+        );
+
+    svg.setAttribute(
+        "xmlns",
+        "http://www.w3.org/2000/svg"
+    );
+
+    svg.setAttribute(
+        "viewBox",
+        "0 0 24 24"
+    );
+
+    svg.setAttribute(
+        "width",
+        "16"
+    );
+
+    svg.setAttribute(
+        "height",
+        "16"
+    );
+
+    svg.setAttribute(
+        "fill",
+        "none"
+    );
+
+    svg.setAttribute(
+        "stroke",
+        "currentColor"
+    );
+
+    svg.setAttribute(
+        "stroke-width",
+        "2"
+    );
+
+    svg.setAttribute(
+        "stroke-linecap",
+        "round"
+    );
+
+    svg.setAttribute(
+        "stroke-linejoin",
+        "round"
+    );
+
+    svg.setAttribute(
+        "aria-hidden",
+        "true"
+    );
+
+    const path =
+        document.createElementNS(
+            "http://www.w3.org/2000/svg",
+            "path"
+        );
+
+    path.setAttribute(
+        "d",
+        "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"
+    );
+
+    svg.appendChild(path);
+
+    const polyline =
+        document.createElementNS(
+            "http://www.w3.org/2000/svg",
+            "polyline"
+        );
+
+    polyline.setAttribute(
+        "points",
+        "7 10 12 15 17 10"
+    );
+
+    svg.appendChild(polyline);
+
+    const line =
+        document.createElementNS(
+            "http://www.w3.org/2000/svg",
+            "line"
+        );
+
+    line.setAttribute(
+        "x1",
+        "12"
+    );
+
+    line.setAttribute(
+        "y1",
+        "15"
+    );
+
+    line.setAttribute(
+        "x2",
+        "12"
+    );
+
+    line.setAttribute(
+        "y2",
+        "3"
+    );
+
+    svg.appendChild(line);
+
+    link.appendChild(svg);
+
+    return link;
+}
+
+
+function createDownloadLink(
+    url,
+    name
+) {
+
+    const link =
+        document.createElement("a");
+
+    link.href = url;
+
+    link.download =
+        name || "файл";
+
+    link.classList.add(
+        "attachment-download"
+    );
+
+    link.textContent =
+        "Скачать";
+
+    return link;
 }
 
 
@@ -589,6 +1873,34 @@ function sendMessage() {
         chatSocket.readyState !== WebSocket.OPEN
     ) {
 
+        // Соединение переподключается — сообщение сохраняем
+        // и отправим сразу после восстановления связи.
+        if (shouldReconnect) {
+
+            const offlinePayload =
+                { message };
+
+            if (pendingReply) {
+
+                offlinePayload.reply_to_id =
+                    pendingReply;
+            }
+
+            pendingMessages.push(
+                offlinePayload
+            );
+
+            input.value = "";
+
+            cancelReplyPreview();
+
+            setInputPlaceholderDefault();
+
+            input.focus();
+
+            return;
+        }
+
         alert(
             "Соединение с чатом потеряно. " +
             "Перезагрузите страницу."
@@ -598,12 +1910,29 @@ function sendMessage() {
     }
 
 
+    const payload = {
+        message,
+    };
+
+
+    // Если выбрано сообщение для ответа — прикрепляем reply.
+    if (pendingReply) {
+
+        payload.reply_to_id =
+            pendingReply;
+    }
+
+
     chatSocket.send(
-        JSON.stringify({
-            message,
-        })
+        JSON.stringify(payload)
     );
 
+
+    // Сбрасываем режим ответа (preview закрывается).
+    cancelReplyPreview();
+
+    // Возвращаем placeholder поля ввода.
+    setInputPlaceholderDefault();
 
     input.value = "";
 
@@ -650,6 +1979,632 @@ if (messageInput) {
             }
         }
     );
+}
+
+
+// ==================================================
+// Toast notifications
+// ==================================================
+
+let toastTimer = null;
+
+
+function showToast(
+    message,
+    type
+) {
+
+    const toast =
+        createToastElement();
+
+    toast.textContent =
+        message;
+
+    toast.classList.toggle(
+        "ok",
+        type === "ok"
+    );
+
+    toast.classList.toggle(
+        "error",
+        type === "error"
+    );
+
+    toast.classList.add(
+        "visible"
+    );
+
+    clearTimeout(toastTimer);
+
+    toastTimer =
+        setTimeout(
+            function () {
+
+                toast.classList.remove(
+                    "visible"
+                );
+            },
+            3000
+        );
+}
+
+
+function createToastElement() {
+
+    let toast =
+        document.querySelector(
+            ".chat-toast"
+        );
+
+    if (!toast) {
+
+        toast =
+            document.createElement(
+                "div"
+            );
+
+        toast.classList.add(
+            "chat-toast"
+        );
+
+        document.body.appendChild(
+            toast
+        );
+    }
+
+    return toast;
+}
+
+
+// ==================================================
+// Send media (файлы, фото, видео, аудио)
+// ==================================================
+
+const chatAttachButton =
+    document.getElementById(
+        "chat-attach-button"
+    );
+
+
+const chatFileInput =
+    document.getElementById(
+        "chat-file-input"
+    );
+
+
+const chatUploadPanel =
+    document.getElementById(
+        "chat-upload-panel"
+    );
+
+
+const chatUploadFiles =
+    document.getElementById(
+        "chat-upload-files"
+    );
+
+
+const chatUploadCaption =
+    document.getElementById(
+        "chat-upload-caption"
+    );
+
+
+const chatUploadSend =
+    document.getElementById(
+        "chat-upload-send"
+    );
+
+
+const chatUploadCancel =
+    document.getElementById(
+        "chat-upload-cancel"
+    );
+
+
+const chatUploadStatus =
+    document.getElementById(
+        "chat-upload-status"
+    );
+
+
+let selectedFiles =
+    [];
+
+
+let mediaBusy =
+    false;
+
+
+function formatFileSize(
+    bytes
+) {
+
+    if (bytes < 1024) {
+
+        return bytes + " Б";
+    }
+
+    if (bytes < 1024 * 1024) {
+
+        return (
+            (bytes / 1024).toFixed(1) +
+            " КБ"
+        );
+    }
+
+    return (
+        (bytes / (1024 * 1024)).toFixed(1) +
+        " МБ"
+    );
+}
+
+
+function showUploadPanel() {
+
+    if (!chatUploadPanel) {
+        return;
+    }
+
+    chatUploadPanel.classList.remove(
+        "hidden"
+    );
+
+    chatUploadCaption?.focus();
+}
+
+
+function hideUploadPanel() {
+
+    selectedFiles = [];
+
+    chatUploadPanel?.classList.add(
+        "hidden"
+    );
+
+    if (chatUploadFiles) {
+        chatUploadFiles.textContent = "";
+    }
+
+    if (chatUploadStatus) {
+        chatUploadStatus.textContent = "";
+    }
+
+    if (chatUploadCaption) {
+        chatUploadCaption.value = "";
+    }
+}
+
+
+function setMediaBusy(busy) {
+
+    mediaBusy = busy;
+
+    if (chatAttachButton) {
+        chatAttachButton.disabled = busy;
+    }
+
+    if (messageSubmitButton) {
+        messageSubmitButton.disabled = busy;
+    }
+
+    if (chatUploadSend) {
+        chatUploadSend.disabled = busy;
+    }
+
+    if (chatUploadCancel) {
+        chatUploadCancel.disabled = busy;
+    }
+}
+
+
+function renderUploadPanel() {
+
+    if (!chatUploadFiles) {
+        return;
+    }
+
+    chatUploadFiles.textContent =
+        "";
+
+    selectedFiles.forEach(
+        function (item, index) {
+
+            const row =
+                document.createElement(
+                    "div"
+                );
+
+            row.classList.add(
+                "upload-file"
+            );
+
+
+            const name =
+                document.createElement(
+                    "span"
+                );
+
+            name.classList.add(
+                "upload-file-name"
+            );
+
+            name.textContent =
+                item.file.name;
+
+            name.title =
+                item.file.name;
+
+
+            const size =
+                document.createElement(
+                    "span"
+                );
+
+            size.classList.add(
+                "upload-file-size"
+            );
+
+            size.textContent =
+                formatFileSize(
+                    item.file.size
+                );
+
+
+            const status =
+                document.createElement(
+                    "span"
+                );
+
+            status.classList.add(
+                "upload-file-status"
+            );
+
+            if (
+                item.status === "uploading"
+            ) {
+
+                status.classList.add(
+                    "spinner"
+                );
+
+            } else if (
+                item.status === "ok"
+            ) {
+
+                status.classList.add(
+                    "ok"
+                );
+
+                status.textContent =
+                    "✓";
+
+            } else if (
+                item.status === "error"
+            ) {
+
+                status.classList.add(
+                    "error"
+                );
+
+                status.textContent =
+                    "!";
+            }
+
+
+            const remove =
+                document.createElement(
+                    "button"
+                );
+
+            remove.type =
+                "button";
+
+            remove.className =
+                "upload-file-remove";
+
+            remove.textContent =
+                "×";
+
+            remove.title =
+                "Убрать файл";
+
+            remove.disabled =
+                mediaBusy;
+
+            remove.addEventListener(
+                "click",
+                function () {
+
+                    selectedFiles.splice(
+                        index,
+                        1
+                    );
+
+                    renderUploadPanel();
+
+                    if (
+                        selectedFiles.length === 0
+                    ) {
+
+                        hideUploadPanel();
+                    }
+                }
+            );
+
+
+            row.appendChild(name);
+            row.appendChild(size);
+            row.appendChild(status);
+            row.appendChild(remove);
+
+            chatUploadFiles.appendChild(
+                row
+            );
+        }
+    );
+}
+
+
+if (chatAttachButton) {
+
+    chatAttachButton.addEventListener(
+        "click",
+        function () {
+
+            chatFileInput?.click();
+        }
+    );
+}
+
+
+if (chatFileInput) {
+
+    chatFileInput.addEventListener(
+        "change",
+        function () {
+
+            const files =
+                Array.from(
+                    chatFileInput.files || []
+                );
+
+            chatFileInput.value =
+                "";
+
+            if (files.length === 0) {
+                return;
+            }
+
+            files.forEach(
+                function (file) {
+
+                    selectedFiles.push({
+                        file: file,
+                        status: "pending",
+                    });
+                }
+            );
+
+            // Если в поле сообщения уже был текст —
+            // используем его как комментарий к медиа.
+            if (
+                messageInput
+                &&
+                messageInput.value.trim()
+            ) {
+
+                chatUploadCaption.value =
+                    messageInput.value.trim();
+
+                messageInput.value = "";
+            }
+
+            showUploadPanel();
+            renderUploadPanel();
+        }
+    );
+}
+
+
+if (chatUploadSend) {
+
+    chatUploadSend.addEventListener(
+        "click",
+        sendSelectedMedia
+    );
+}
+
+
+if (chatUploadCaption) {
+
+    chatUploadCaption.addEventListener(
+        "keydown",
+        function (event) {
+
+            if (event.key === "Enter") {
+
+                event.preventDefault();
+
+                sendSelectedMedia();
+            }
+        }
+    );
+}
+
+
+if (chatUploadCancel) {
+
+    chatUploadCancel.addEventListener(
+        "click",
+        hideUploadPanel
+    );
+}
+
+
+async function sendSelectedMedia() {
+
+    if (selectedFiles.length === 0) {
+        return;
+    }
+
+    if (
+        !chatSocket
+        ||
+        chatSocket.readyState !== WebSocket.OPEN
+    ) {
+
+        showToast(
+            "Соединение с чатом потеряно. " +
+            "Перезагрузите страницу.",
+            "error"
+        );
+
+        return;
+    }
+
+    const caption =
+        chatUploadCaption
+            ? chatUploadCaption.value.trim()
+            : "";
+
+    const total =
+        selectedFiles.length;
+
+    let done = 0;
+    let failed = 0;
+
+    setMediaBusy(true);
+
+    for (
+        const item of selectedFiles
+    ) {
+
+        if (item.status === "ok") {
+
+            done += 1;
+            continue;
+        }
+
+        item.status = "uploading";
+        item.error = "";
+        renderUploadPanel();
+
+        if (chatUploadStatus) {
+
+            chatUploadStatus.textContent =
+                `Отправка ${done + 1} из ${total}...`;
+        }
+
+        const ok =
+            await uploadMediaFile(
+                item.file,
+                caption
+            );
+
+        if (ok) {
+
+            item.status = "ok";
+            done += 1;
+
+        } else {
+
+            item.status = "error";
+            failed += 1;
+        }
+
+        renderUploadPanel();
+    }
+
+    setMediaBusy(false);
+
+    if (chatUploadStatus) {
+        chatUploadStatus.textContent = "";
+    }
+
+    if (failed === 0) {
+
+        showToast(
+            total === 1
+                ? "Файл отправлен"
+                : `Отправлено файлов: ${total}`,
+            "ok"
+        );
+
+        hideUploadPanel();
+
+        messageInput?.focus();
+
+    } else {
+
+        showToast(
+            "Не удалось отправить некоторые файлы.",
+            "error"
+        );
+    }
+}
+
+
+async function uploadMediaFile(
+    file,
+    caption
+) {
+
+    const formData =
+        new FormData();
+
+    formData.append("file", file);
+
+    formData.append("caption", caption || "");
+
+
+    try {
+
+        const response =
+            await apiRequest(
+                chatConfig.sendFileUrl,
+                {
+                    method: "POST",
+
+                    body: formData,
+                }
+            );
+
+
+        const data =
+            await response.json();
+
+
+        if (!response.ok) {
+
+            const errorMessages =
+                extractFormErrors(
+                    data.errors
+                );
+
+            console.error(
+                "Upload failed:",
+                errorMessages || data.error
+            );
+
+            return false;
+        }
+
+
+        // Сообщение с файлом рассылается сервером
+        // всем участникам комнаты, включая отправителя.
+
+        return true;
+
+    } catch (error) {
+
+        console.error(
+            "Upload error:",
+            error
+        );
+
+        return false;
+    }
 }
 
 
@@ -1809,6 +3764,529 @@ function removeUserFromAvailableList(
 
 
 // ==================================================
+// Room media (панель «Медиа»)
+// ==================================================
+
+const mediaButton =
+    document.getElementById(
+        "media-button"
+    );
+
+const mediaModal =
+    document.getElementById(
+        "media-modal"
+    );
+
+const mediaTabs =
+    document.getElementById(
+        "media-tabs"
+    );
+
+const mediaGallery =
+    document.getElementById(
+        "media-gallery"
+    );
+
+let roomMediaData = null;
+
+let activeMediaTab = "photos";
+
+
+if (
+    mediaButton
+    &&
+    mediaModal
+) {
+
+    mediaButton.addEventListener(
+        "click",
+        function () {
+
+            roomMenuDropdown?.classList.add(
+                "hidden"
+            );
+
+            openModal(
+                mediaModal
+            );
+
+            loadRoomMedia();
+        }
+    );
+}
+
+
+if (mediaTabs) {
+
+    mediaTabs.addEventListener(
+        "click",
+        function (event) {
+
+            const tabButton =
+                event.target.closest(
+                    "[data-media-tab]"
+                );
+
+            if (!tabButton) {
+                return;
+            }
+
+            activeMediaTab =
+                tabButton.dataset.mediaTab;
+
+            mediaTabs
+                .querySelectorAll(
+                    "[data-media-tab]"
+                )
+                .forEach(
+                    function (button) {
+
+                        button.classList.toggle(
+                            "active",
+                            button === tabButton
+                        );
+                    }
+                );
+
+            renderMediaTab(
+                activeMediaTab
+            );
+        }
+    );
+}
+
+
+async function loadRoomMedia() {
+
+    if (!mediaGallery) {
+        return;
+    }
+
+    mediaGallery.textContent =
+        "Загрузка...";
+
+    mediaGallery.classList.add(
+        "media-loading"
+    );
+
+    try {
+
+        const response =
+            await apiRequest(
+                chatConfig.mediaUrl,
+                {
+                    method: "GET",
+                }
+            );
+
+        if (!response.ok) {
+
+            renderMediaError(
+                "Не удалось загрузить медиа."
+            );
+
+            return;
+        }
+
+        roomMediaData =
+            await response.json();
+
+        updateMediaCounts();
+
+        renderMediaTab(
+            activeMediaTab
+        );
+
+    } catch (error) {
+
+        console.error(
+            "Media load error:",
+            error
+        );
+
+        renderMediaError(
+            "Ошибка сети. Попробуйте позже."
+        );
+    }
+}
+
+
+function renderMediaError(message) {
+
+    if (!mediaGallery) {
+        return;
+    }
+
+    mediaGallery.textContent = "";
+
+    const empty =
+        document.createElement("div");
+
+    empty.className =
+        "media-empty";
+
+    empty.textContent =
+        message;
+
+    mediaGallery.appendChild(
+        empty
+    );
+}
+
+
+function updateMediaCounts() {
+
+    if (
+        !roomMediaData
+        ||
+        !mediaTabs
+    ) {
+        return;
+    }
+
+    mediaTabs
+        .querySelectorAll(
+            "[data-media-tab]"
+        )
+        .forEach(
+            function (button) {
+
+                const tab =
+                    button.dataset.mediaTab;
+
+                const count =
+                    (roomMediaData[tab] || [])
+                        .length;
+
+                const countElement =
+                    button.querySelector(
+                        ".media-tab-count"
+                    );
+
+                if (countElement) {
+
+                    countElement.textContent =
+                        String(count);
+                }
+            }
+        );
+}
+
+
+function renderMediaTab(tab) {
+
+    if (!mediaGallery) {
+        return;
+    }
+
+    mediaGallery.textContent = "";
+
+    mediaGallery.classList.remove(
+        "media-loading"
+    );
+
+    const items =
+        roomMediaData?.[tab] || [];
+
+    if (items.length === 0) {
+
+        const empty =
+            document.createElement("div");
+
+        empty.className =
+            "media-empty";
+
+        empty.textContent =
+            "Пока нет материалов в этой категории.";
+
+        mediaGallery.appendChild(
+            empty
+        );
+
+        return;
+    }
+
+    if (
+        tab === "photos"
+        ||
+        tab === "videos"
+    ) {
+
+        const grid =
+            document.createElement("div");
+
+        grid.className =
+            "media-grid";
+
+        items.forEach(
+            function (item) {
+
+                grid.appendChild(
+                    createMediaTile(
+                        item,
+                        tab
+                    )
+                );
+            }
+        );
+
+        mediaGallery.appendChild(
+            grid
+        );
+
+    } else {
+
+        const list =
+            document.createElement("div");
+
+        list.className =
+            "media-list";
+
+        items.forEach(
+            function (item) {
+
+                list.appendChild(
+                    createMediaRow(
+                        item,
+                        tab
+                    )
+                );
+            }
+        );
+
+        mediaGallery.appendChild(
+            list
+        );
+    }
+}
+
+
+function createMediaTile(item, kind) {
+
+    const link =
+        document.createElement("a");
+
+    link.className =
+        "media-grid-item";
+
+    link.href =
+        item.attachment;
+
+    link.target = "_blank";
+
+    link.rel = "noopener";
+
+    link.title =
+        item.attachment_name
+        ||
+        item.username;
+
+
+    if (kind === "videos") {
+
+        const video =
+            document.createElement("video");
+
+        video.src =
+            item.attachment;
+
+        video.muted = true;
+
+        video.preload = "metadata";
+
+        video.setAttribute(
+            "playsinline",
+            ""
+        );
+
+        link.appendChild(
+            video
+        );
+
+        const play =
+            document.createElement("span");
+
+        play.className =
+            "media-tile-play";
+
+        play.textContent = "▶";
+
+        link.appendChild(
+            play
+        );
+
+    } else {
+
+        const image =
+            document.createElement("img");
+
+        image.src =
+            item.attachment;
+
+        image.alt =
+            item.attachment_name
+            ||
+            "Фото";
+
+        image.loading = "lazy";
+
+        link.appendChild(
+            image
+        );
+    }
+
+
+    const overlay =
+        document.createElement("span");
+
+    overlay.className =
+        "media-tile-overlay";
+
+    const meta =
+        document.createElement("span");
+
+    meta.className =
+        "media-tile-meta";
+
+    meta.textContent =
+        item.username;
+
+    overlay.appendChild(
+        meta
+    );
+
+    if (item.text) {
+
+        const caption =
+            document.createElement("span");
+
+        caption.className =
+            "media-tile-caption";
+
+        caption.textContent =
+            item.text;
+
+        overlay.appendChild(
+            caption
+        );
+    }
+
+    link.appendChild(
+        overlay
+    );
+
+    return link;
+}
+
+
+function createMediaRow(item, kind) {
+
+    const link =
+        document.createElement("a");
+
+    link.className =
+        "media-list-item";
+
+    link.target = "_blank";
+
+    link.rel = "noopener";
+
+    link.href =
+        kind === "links"
+            ? item.link
+            : item.attachment;
+
+
+    const icon =
+        document.createElement("span");
+
+    icon.className =
+        "media-list-icon";
+
+    icon.textContent =
+        kind === "links"
+            ? "🔗"
+            : "📄";
+
+    link.appendChild(
+        icon
+    );
+
+
+    const body =
+        document.createElement("span");
+
+    body.className =
+        "media-list-body";
+
+    const name =
+        document.createElement("span");
+
+    name.className =
+        "media-list-name";
+
+    name.textContent =
+        kind === "links"
+            ? (item.link || "")
+            : (item.attachment_name || "Файл");
+
+    body.appendChild(
+        name
+    );
+
+
+    const meta =
+        document.createElement("span");
+
+    meta.className =
+        "media-list-meta";
+
+    meta.textContent =
+        [
+            item.username,
+            formatMediaDate(
+                item.created_at
+            ),
+        ]
+        .filter(Boolean)
+        .join(" • ");
+
+    body.appendChild(
+        meta
+    );
+
+
+    link.appendChild(
+        body
+    );
+
+    return link;
+}
+
+
+function formatMediaDate(iso) {
+
+    const date =
+        new Date(iso);
+
+    if (isNaN(date)) {
+        return "";
+    }
+
+    return date.toLocaleString(
+        "ru-RU",
+        {
+            day: "2-digit",
+            month: "2-digit",
+            year: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+        }
+    );
+}
+
+
+// ==================================================
 // Remove member
 // ==================================================
 
@@ -1877,7 +4355,11 @@ async function removeRoomMember(
 
         const response =
             await apiRequest(
-                `/chat/rooms/${chatConfig.roomId}/members/${userId}/remove/`,
+                chatConfig.removeMemberUrlTemplate
+                    .replace(
+                        "/0/remove/",
+                        "/" + userId + "/remove/"
+                    ),
                 {
                     method: "POST",
                 }
