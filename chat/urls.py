@@ -5,6 +5,7 @@ from .views import (
     CreateRoomView,
     JoinRoomView,
     LeaveRoomView,
+    MarkRoomReadView,
     RemoveRoomMemberView,
     RoomMediaView,
     SendMediaMessageView,
@@ -67,6 +68,12 @@ urlpatterns = [
         "rooms/<int:room_id>/media/",
         RoomMediaView.as_view(),
         name="room_media",
+    ),
+
+    path(
+        "rooms/<int:room_id>/read/",
+        MarkRoomReadView.as_view(),
+        name="room_read",
     ),
 
     path(
