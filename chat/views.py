@@ -103,6 +103,29 @@ def _is_room_member(room, user_id):
     )
 
 
+def _room_display_name(room, current_user):
+    """Отображаемое имя комнаты.
+
+    Для личных (DM) комнат показывает собеседника,
+    а не внутреннее имя вида "dm-1-2".
+    """
+
+    if (
+        room.name.startswith("dm-")
+        and current_user.is_authenticated
+    ):
+        other = (
+            room.members
+            .exclude(id=current_user.id)
+            .first()
+        )
+
+        if other is not None:
+            return other.username
+
+    return room.name
+
+
 def _mark_room_read(user, room):
     """Фиксирует, что пользователь прочитал все сообщения комнаты."""
 
@@ -132,6 +155,12 @@ def _rooms_with_unread(user, rooms_queryset):
     """
 
     rooms = list(rooms_queryset)
+
+    for room in rooms:
+        room.display_name = _room_display_name(
+            room,
+            user if user.is_authenticated else None,
+        )
 
     if not user.is_authenticated:
         for room in rooms:
@@ -199,6 +228,11 @@ def chat_page(request, room_name):
     room = get_object_or_404(
         ChatRoom.objects.prefetch_related("members"),
         name=room_name,
+    )
+
+    room.display_name = _room_display_name(
+        room,
+        request.user if request.user.is_authenticated else None,
     )
 
     is_room_member = False
@@ -728,6 +762,116 @@ class RoomMediaView(LoginRequiredMixin, View):
                 "videos": videos,
                 "documents": documents,
                 "links": links,
+            }
+        )
+
+
+def _dm_room_name(user_id_a, user_id_b):
+    """Создаёт детерминированное имя приватной 1:1 комнаты.
+
+    Не зависит от порядка аргументов: оба пользователя всегда
+    получают одно и то же имя для одной и той же пары.
+    """
+
+    low, high = sorted((user_id_a, user_id_b))
+
+    return f"dm-{low}-{high}"
+
+
+class DirectMessageView(LoginRequiredMixin, View):
+    """Открывает (или создаёт) личный чат с другим пользователем."""
+
+    def post(self, request):
+        username = (request.POST.get("username") or "").strip()
+
+        if not username:
+            return JsonResponse(
+                {
+                    "success": False,
+                    "message": (
+                        "Не указан получатель сообщения."
+                    ),
+                },
+                status=400,
+            )
+
+        target = (
+            User.objects
+            .filter(username=username)
+            .first()
+        )
+
+        if target is None:
+            return JsonResponse(
+                {
+                    "success": False,
+                    "message": (
+                        "Пользователь не найден."
+                    ),
+                },
+                status=404,
+            )
+
+        if target.id == request.user.id:
+            return JsonResponse(
+                {
+                    "success": False,
+                    "message": (
+                        "Нельзя написать самому себе."
+                    ),
+                },
+                status=400,
+            )
+
+        room_name = _dm_room_name(
+            request.user.id,
+            target.id,
+        )
+
+        room = (
+            ChatRoom.objects
+            .filter(name=room_name)
+            .first()
+        )
+
+        if room is None:
+            try:
+                room = ChatRoom.objects.create(
+                    name=room_name,
+                    owner=request.user,
+                    is_private=True,
+                )
+            except IntegrityError:
+                # Кто-то успел создать комнату раньше —
+                # перечитываем.
+                room = (
+                    ChatRoom.objects
+                    .filter(name=room_name)
+                    .first()
+                )
+
+        if room is None:
+            return JsonResponse(
+                {
+                    "success": False,
+                    "message": (
+                        "Не удалось создать чат. Попробуйте ещё раз."
+                    ),
+                },
+                status=500,
+            )
+
+        # Оба пользователя — участники личного чата.
+        room.members.add(request.user)
+        room.members.add(target)
+
+        return JsonResponse(
+            {
+                "success": True,
+                "url": reverse(
+                    "chat",
+                    kwargs={"room_name": room.name},
+                ),
             }
         )
 
