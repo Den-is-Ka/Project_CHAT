@@ -13,7 +13,12 @@ from PIL import Image
 from . import consumers as consumers_module
 from . import presence as presence_module
 from .consumers import ChatConsumer
-from .models import ChatRoom, Message, MessageReaction
+from .models import (
+    ChatRoom,
+    Message,
+    MessageReaction,
+    RoomReadState,
+)
 
 User = get_user_model()
 
@@ -439,6 +444,161 @@ class RoomMediaViewTests(TransactionTestCase):
         self.assertEqual(data["videos"], [])
         self.assertEqual(data["documents"], [])
         self.assertEqual(data["links"], [])
+
+
+class RoomUnreadTests(TransactionTestCase):
+    """Непрочитанные сообщения: счётчики, сортировка, пометка прочитанного."""
+
+    def setUp(self):
+        self.alice = User.objects.create_user(
+            username="alice",
+            password="pass-alice-123",
+        )
+        self.bob = User.objects.create_user(
+            username="bob",
+            password="pass-bob-123",
+        )
+        self.charlie = User.objects.create_user(
+            username="charlie",
+            password="pass-charlie-123",
+        )
+
+        self.room_alpha = ChatRoom.objects.create(
+            name="alpha",
+            owner=self.alice,
+        )
+        self.room_alpha.members.add(self.alice)
+        self.room_alpha.members.add(self.bob)
+
+        self.room_beta = ChatRoom.objects.create(
+            name="beta",
+            owner=self.alice,
+        )
+        self.room_beta.members.add(self.alice)
+        self.room_beta.members.add(self.bob)
+
+        self.room_gamma = ChatRoom.objects.create(
+            name="gamma",
+            owner=self.bob,
+        )
+        self.room_gamma.members.add(self.bob)
+        self.room_gamma.members.add(self.alice)
+
+    def add_message(self, user, room, text="привет"):
+        Message.objects.create(
+            user=user,
+            room=room,
+            text=text,
+        )
+
+    def test_unread_counts_and_order(self):
+        # В alpha боб написал 2 сообщения, в beta — одно,
+        # в gamma ничего. Открываем gamma (пустую), чтобы alpha/beta
+        # не были помечены прочитанными.
+        self.add_message(self.bob, self.room_alpha)
+        self.add_message(self.bob, self.room_alpha)
+        self.add_message(self.bob, self.room_beta)
+
+        self.client.force_login(self.alice)
+
+        response = self.client.get(
+            f"/chat/{self.room_gamma.name}/",
+            HTTP_HOST="testserver",
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        rooms = response.context["rooms"]
+
+        # Непрочитанные чаты идут первыми (alpha: 2, затем beta: 1).
+        self.assertEqual(
+            [room.name for room in rooms][:3],
+            ["alpha", "beta", "gamma"],
+        )
+
+        counts = {
+            room.name: room.unread_count
+            for room in rooms
+        }
+
+        self.assertEqual(counts["alpha"], 2)
+        self.assertEqual(counts["beta"], 1)
+        self.assertEqual(counts["gamma"], 0)
+
+    def test_own_messages_not_counted(self):
+        self.add_message(self.alice, self.room_alpha)
+
+        self.client.force_login(self.alice)
+
+        response = self.client.get(
+            f"/chat/{self.room_alpha.name}/",
+            HTTP_HOST="testserver",
+        )
+
+        rooms = response.context["rooms"]
+
+        counts = {
+            room.name: room.unread_count
+            for room in rooms
+        }
+
+        self.assertEqual(counts["alpha"], 0)
+
+    def test_opening_room_marks_it_read(self):
+        self.add_message(self.bob, self.room_alpha)
+
+        self.client.force_login(self.alice)
+
+        response = self.client.get(
+            f"/chat/{self.room_alpha.name}/",
+            HTTP_HOST="testserver",
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        rooms = response.context["rooms"]
+
+        counts = {
+            room.name: room.unread_count
+            for room in rooms
+        }
+
+        self.assertEqual(counts["alpha"], 0)
+
+    def test_mark_read_endpoint(self):
+        self.add_message(self.bob, self.room_alpha)
+
+        self.client.force_login(self.alice)
+
+        response = self.client.post(
+            f"/chat/rooms/{self.room_alpha.id}/read/",
+            HTTP_HOST="testserver",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["success"])
+
+        state = RoomReadState.objects.get(
+            user=self.alice,
+            room=self.room_alpha,
+        )
+        self.assertEqual(
+            state.last_read_message_id,
+            self.room_alpha.messages
+                .order_by("-id")
+                .first()
+                .id,
+        )
+
+    def test_non_member_cannot_mark_read(self):
+        self.client.force_login(self.charlie)
+
+        response = self.client.post(
+            f"/chat/rooms/{self.room_alpha.id}/read/",
+            HTTP_HOST="testserver",
+        )
+
+        self.assertEqual(response.status_code, 403)
 
 
 class ChatConsumerReconnectTests(TransactionTestCase):
