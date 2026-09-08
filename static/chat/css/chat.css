@@ -1964,6 +1964,178 @@ button {
 }
 
 
+/* Кнопка переключения отправки/записи должна прятаться
+   через hidden-атрибут (иначе display:flex его перебивает). */
+.chat-input-button[hidden] {
+    display: none;
+}
+
+.chat-record-button {
+    position: relative;
+
+    background: transparent;
+
+    color: var(--text-muted);
+
+    touch-action: none;
+
+    user-select: none;
+
+    -webkit-user-select: none;
+}
+
+.chat-record-button:hover:not(:disabled) {
+    background: var(--primary-light);
+
+    color: var(--primary);
+}
+
+.chat-record-button:disabled {
+    opacity: 0.5;
+
+    cursor: not-allowed;
+}
+
+.chat-record-button.recording {
+    background: var(--danger-light);
+
+    color: var(--danger);
+}
+
+.chat-record-button.holding {
+    background: var(--primary-light);
+
+    color: var(--primary);
+}
+
+.chat-record-button.holding::before {
+    content: "";
+
+    position: absolute;
+
+    inset: -5px;
+
+    border: 2px solid var(--primary);
+
+    animation:
+        chat-hold-pulse 1.2s ease-out infinite;
+
+    opacity: 0;
+
+    pointer-events: none;
+}
+
+@keyframes chat-hold-pulse {
+    0% {
+        transform: scale(0.9);
+
+        opacity: 0.7;
+    }
+    100% {
+        transform: scale(1.4);
+
+        opacity: 0;
+    }
+}
+
+.chat-record-button.recording::before {
+    content: "";
+
+    position: absolute;
+
+    inset: -5px;
+
+    border: 2px solid var(--danger);
+
+    animation:
+        chat-record-pulse 1.2s ease-out infinite;
+
+    opacity: 0;
+
+    pointer-events: none;
+}
+
+@keyframes chat-record-pulse {
+    0% {
+        transform: scale(0.9);
+
+        opacity: 0.7;
+    }
+    100% {
+        transform: scale(1.4);
+
+        opacity: 0;
+    }
+}
+
+.chat-recording-bar {
+    display: flex;
+    align-items: center;
+
+    gap: 8px;
+
+    padding: 6px 10px;
+
+    font-size: 13px;
+
+    color: var(--text);
+}
+
+.chat-recording-bar[hidden] {
+    display: none;
+}
+
+.chat-recording-dot {
+    width: 10px;
+    height: 10px;
+
+    flex-shrink: 0;
+
+    border-radius: 50%;
+
+    background: var(--danger);
+
+    animation:
+        chat-record-dot 1s ease-in-out infinite;
+}
+
+@keyframes chat-record-dot {
+    0%,
+    100% {
+        opacity: 1;
+
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.45;
+
+        transform: scale(0.8);
+    }
+}
+
+.chat-recording-time {
+    color: var(--text);
+
+    font-weight: 600;
+
+    font-variant-numeric: tabular-nums;
+}
+
+.chat-recording-hint {
+    color: var(--text-muted);
+
+    white-space: nowrap;
+
+    overflow: hidden;
+
+    text-overflow: ellipsis;
+}
+
+.chat-input.recording {
+    border-color: var(--danger);
+}
+
+
 /* =========================
    Media upload panel
 ========================= */
