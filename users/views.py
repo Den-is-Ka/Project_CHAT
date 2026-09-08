@@ -3,10 +3,13 @@ from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.shortcuts import render, redirect
 from django.views.decorators.http import require_POST
+
 from .forms import RegistrationForm, ProfileForm
+from .throttling import throttle_login, throttle_register
 
 
 @require_POST
+@throttle_login
 def login_view(request):
     username = request.POST.get("username", "").strip()
     password = request.POST.get("password", "")
@@ -45,6 +48,7 @@ def logout_view(request):
     return redirect("home")
 
 @require_POST
+@throttle_register
 def register_view(request):
     """Регистрирует нового пользователя."""
 

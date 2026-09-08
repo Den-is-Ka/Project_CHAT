@@ -1,8 +1,14 @@
+import re
+import time
+
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.core.cache import cache
 from django.core.exceptions import PermissionDenied
-from django.db import models
+from django.db import IntegrityError, models
 from django.http import JsonResponse
-from django.shortcuts import get_object_or_404, render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views import View
 
@@ -10,9 +16,115 @@ from chat.forms import (
     AddRoomMemberForm,
     ChatRoomForm,
     ChatRoomUpdateForm,
+    SendMediaMessageForm,
 )
-from chat.models import ChatRoom
+from chat.models import ChatRoom, Message
+from chat.utils import get_attachment_type, serialize_message
 from users.models import User
+
+# Ограничение загрузки файлов: не более MAX_MEDIA_UPLOADS за окно в секунду.
+MAX_MEDIA_UPLOADS = 30
+MEDIA_UPLOAD_WINDOW = 60
+
+# Регулярное выражение для поиска ссылок в тексте сообщения.
+_URL_RE = re.compile(
+    r"(?:https?://|www\.)\S+",
+    re.IGNORECASE,
+)
+
+# Максимальное число сообщений, просматриваемых при сборе медиа.
+MEDIA_LIMIT = 500
+
+
+def _first_url(text):
+    """Возвращает первую найденную в тексте ссылку (или None)."""
+
+    match = _URL_RE.search(text or "")
+
+    if not match:
+        return None
+
+    url = match.group(0).rstrip(".,;:!?…)]}\"'")
+
+    if url.startswith("www."):
+        url = "https://" + url
+
+    return url
+
+
+def _serialize_media_item(message):
+    """Лёгкая сериализация сообщения для панели «Медиа»."""
+
+    return {
+        "id": message.id,
+        "username": message.user.username,
+        "avatar": (
+            message.user.avatar.url
+            if message.user.avatar
+            else None
+        ),
+        "text": message.text,
+        "created_at": message.created_at.isoformat(),
+        "attachment": (
+            message.attachment.url
+            if message.attachment
+            else None
+        ),
+        "attachment_type": message.attachment_type,
+        "attachment_name": message.attachment_name,
+    }
+
+
+def _available_rooms(user):
+    """Комнаты, доступные пользователю."""
+
+    if user.is_authenticated:
+        return (
+            ChatRoom.objects
+            .filter(
+                models.Q(is_private=False)
+                | models.Q(members=user)
+                | models.Q(owner=user)
+            )
+            .distinct()
+        )
+
+    return ChatRoom.objects.filter(
+        is_private=False
+    )
+
+
+def _is_room_member(room, user_id):
+    """Является ли пользователь участником комнаты (владелец сюда тоже входит)."""
+
+    return (
+        room.owner_id == user_id
+        or room.members.filter(id=user_id).exists()
+    )
+
+
+def first_chat(request):
+    """Перенаправляет пользователя в первую доступную комнату.
+
+    Заменяет жёстко зашитые ссылки на комнату "general",
+    которая может не существовать.
+    """
+
+    room = (
+        _available_rooms(request.user)
+        .order_by("id")
+        .first()
+    )
+
+    if room is None:
+        return redirect(reverse("home"))
+
+    return redirect(
+        reverse(
+            "chat",
+            kwargs={"room_name": room.name},
+        )
+    )
 
 
 def chat_page(request, room_name):
@@ -24,11 +136,9 @@ def chat_page(request, room_name):
     is_room_member = False
 
     if request.user.is_authenticated:
-        is_room_member = (
-            room.owner_id == request.user.id
-            or room.members.filter(
-                id=request.user.id
-            ).exists()
+        is_room_member = _is_room_member(
+            room,
+            request.user.id,
         )
 
         if (
@@ -49,16 +159,7 @@ def chat_page(request, room_name):
             room=room,
         ).fields["user"].queryset
 
-    if request.user.is_authenticated:
-        rooms = ChatRoom.objects.filter(
-            models.Q(is_private=False)
-            | models.Q(members=request.user)
-            | models.Q(owner=request.user)
-        ).distinct()
-    else:
-        rooms = ChatRoom.objects.filter(
-            is_private=False
-        )
+    rooms = _available_rooms(request.user)
 
     return render(
         request,
@@ -98,7 +199,26 @@ class CreateRoomView(LoginRequiredMixin, View):
 
         room = form.save(commit=False)
         room.owner = request.user
-        room.save()
+
+        try:
+            room.save()
+        except IntegrityError:
+            return JsonResponse(
+                {
+                    "success": False,
+                    "errors": {
+                        "name": [
+                            {
+                                "message": (
+                                    "Комната с таким названием "
+                                    "уже существует."
+                                ),
+                            }
+                        ]
+                    },
+                },
+                status=400,
+            )
 
         room.members.add(request.user)
 
@@ -151,7 +271,25 @@ class UpdateRoomView(LoginRequiredMixin, View):
                 status=400,
             )
 
-        room = form.save()
+        try:
+            room = form.save()
+        except IntegrityError:
+            return JsonResponse(
+                {
+                    "success": False,
+                    "errors": {
+                        "name": [
+                            {
+                                "message": (
+                                    "Комната с таким названием "
+                                    "уже существует."
+                                ),
+                            }
+                        ]
+                    },
+                },
+                status=400,
+            )
 
         return JsonResponse(
             {
@@ -351,6 +489,171 @@ class JoinRoomView(LoginRequiredMixin, View):
                     "id": room.id,
                     "name": room.name,
                 },
+            }
+        )
+
+
+class SendMediaMessageView(LoginRequiredMixin, View):
+    """Отправка файла (фото, видео, аудио) в комнату."""
+
+    def post(self, request, room_id):
+        room = get_object_or_404(
+            ChatRoom,
+            id=room_id,
+        )
+
+        if not _is_room_member(room, request.user.id):
+            raise PermissionDenied(
+                "У вас нет доступа к этой комнате."
+            )
+
+        if not self.is_upload_rate_ok(request, room):
+            return JsonResponse(
+                {
+                    "success": False,
+                    "error": (
+                        "Слишком много файлов. "
+                        "Подождите немного."
+                    ),
+                },
+                status=429,
+            )
+
+        form = SendMediaMessageForm(
+            request.POST,
+            request.FILES,
+        )
+
+        if not form.is_valid():
+            return JsonResponse(
+                {
+                    "success": False,
+                    "errors": form.errors,
+                },
+                status=400,
+            )
+
+        file = form.cleaned_data["file"]
+        caption = form.cleaned_data["caption"]
+
+        message = Message.objects.create(
+            user=request.user,
+            room=room,
+            text=caption,
+            attachment=file,
+            attachment_type=get_attachment_type(
+                file.name,
+                file.content_type,
+            ),
+            attachment_name=file.name,
+        )
+
+        payload = serialize_message(
+            message,
+            current_user_id=request.user.id,
+        )
+
+        channel_layer = get_channel_layer()
+
+        if channel_layer is not None:
+            async_to_sync(
+                channel_layer.group_send
+            )(
+                f"chat_{room.id}",
+                {
+                    "type": "chat_message",
+                    **payload,
+                },
+            )
+
+        return JsonResponse(
+            {
+                "success": True,
+                "message": payload,
+            },
+            status=201,
+        )
+
+    def is_upload_rate_ok(self, request, room):
+        """Ограничивает частоту загрузки файлов через кэш."""
+
+        window = int(time.time()) // MEDIA_UPLOAD_WINDOW
+        key = (
+            f"chat:media_rate:"
+            f"{request.user.id}:{room.id}:{window}"
+        )
+
+        count = cache.get(key, 0)
+
+        if count >= MAX_MEDIA_UPLOADS:
+            return False
+
+        cache.set(
+            key,
+            count + 1,
+            MEDIA_UPLOAD_WINDOW + 10,
+        )
+
+        return True
+
+
+class RoomMediaView(LoginRequiredMixin, View):
+    """Список медиа комнаты по группам: фото, видео, документы, ссылки."""
+
+    def get(self, request, room_id):
+        room = get_object_or_404(
+            ChatRoom,
+            id=room_id,
+        )
+
+        if (
+            room.is_private
+            and not _is_room_member(
+                room,
+                request.user.id,
+            )
+        ):
+            raise PermissionDenied(
+                "У вас нет доступа к этой комнате."
+            )
+
+        messages = (
+            room.messages
+            .select_related("user")
+            .order_by("-created_at")[:MEDIA_LIMIT]
+        )
+
+        photos = []
+        videos = []
+        documents = []
+        links = []
+
+        for message in messages:
+            if message.attachment:
+                item = _serialize_media_item(message)
+
+                if message.attachment_type == "image":
+                    photos.append(item)
+                elif message.attachment_type == "video":
+                    videos.append(item)
+                else:
+                    documents.append(item)
+
+                continue
+
+            url = _first_url(message.text)
+
+            if url:
+                item = _serialize_media_item(message)
+                item["link"] = url
+                links.append(item)
+
+        return JsonResponse(
+            {
+                "photos": photos,
+                "videos": videos,
+                "documents": documents,
+                "links": links,
             }
         )
 
