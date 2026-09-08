@@ -33,6 +33,7 @@ AUDIO_EXTENSIONS = {
     ".m4a",
     ".aac",
     ".opus",
+    ".weba",
     ".flac",
 }
 
