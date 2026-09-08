@@ -206,6 +206,48 @@ class SendMediaMessageViewTests(TransactionTestCase):
         self.assertEqual(message.attachment_type, "video")
         self.assertEqual(message.attachment_name, "clip.mp4")
 
+    def test_audio_webm_detected(self):
+        audio = SimpleUploadedFile(
+            "voice_message_1.weba",
+            b"fake opus bytes",
+            content_type="audio/webm",
+        )
+
+        response = self.upload(
+            self.member,
+            file=audio,
+        )
+
+        self.assertEqual(response.status_code, 201)
+
+        message = Message.objects.get(room=self.room)
+        self.assertEqual(message.attachment_type, "audio")
+        self.assertEqual(
+            message.attachment_name,
+            "voice_message_1.weba",
+        )
+
+    def test_audio_m4a_detected(self):
+        audio = SimpleUploadedFile(
+            "voice_message_1.m4a",
+            b"fake m4a bytes",
+            content_type="audio/mp4",
+        )
+
+        response = self.upload(
+            self.member,
+            file=audio,
+        )
+
+        self.assertEqual(response.status_code, 201)
+
+        message = Message.objects.get(room=self.room)
+        self.assertEqual(message.attachment_type, "audio")
+        self.assertEqual(
+            message.attachment_name,
+            "voice_message_1.m4a",
+        )
+
     def test_non_member_cannot_upload(self):
         response = self.upload(
             self.other,
