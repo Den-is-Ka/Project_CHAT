@@ -18,7 +18,7 @@ from chat.forms import (
     ChatRoomUpdateForm,
     SendMediaMessageForm,
 )
-from chat.models import ChatRoom, Message
+from chat.models import ChatRoom, Message, RoomReadState
 from chat.utils import get_attachment_type, serialize_message
 from users.models import User
 
@@ -103,6 +103,74 @@ def _is_room_member(room, user_id):
     )
 
 
+def _mark_room_read(user, room):
+    """Фиксирует, что пользователь прочитал все сообщения комнаты."""
+
+    last_message_id = (
+        Message.objects
+        .filter(room=room)
+        .order_by("-id")
+        .values_list("id", flat=True)
+        .first()
+        or 0
+    )
+
+    RoomReadState.objects.update_or_create(
+        user=user,
+        room=room,
+        defaults={
+            "last_read_message_id": last_message_id,
+        },
+    )
+
+
+def _rooms_with_unread(user, rooms_queryset):
+    """Возвращает список комнат с полем unread_count.
+
+    Комнаты с непрочитанными сообщениями идут первыми.
+    Порядок остальных сохраняется (стабильная сортировка).
+    """
+
+    rooms = list(rooms_queryset)
+
+    if not user.is_authenticated:
+        for room in rooms:
+            room.unread_count = 0
+
+        return rooms
+
+    room_ids = [room.id for room in rooms]
+
+    read_states = {
+        state.room_id: state.last_read_message_id
+        for state in RoomReadState.objects.filter(
+            user=user,
+            room_id__in=room_ids,
+        )
+    }
+
+    for room in rooms:
+        last_read_id = read_states.get(room.id, 0)
+
+        if not _is_room_member(room, user.id):
+            room.unread_count = 0
+            continue
+
+        room.unread_count = (
+            Message.objects
+            .filter(
+                room=room,
+                id__gt=last_read_id,
+            )
+            .exclude(user=user)
+            .count()
+        )
+
+    rooms.sort(key=lambda room: -room.unread_count)
+
+    return rooms
+
+
 def first_chat(request):
     """Перенаправляет пользователя в первую доступную комнату.
 
@@ -149,6 +217,9 @@ def chat_page(request, room_name):
                 "У вас нет доступа к этой комнате."
             )
 
+        if is_room_member:
+            _mark_room_read(request.user, room)
+
     available_users = User.objects.none()
 
     if (
@@ -159,7 +230,10 @@ def chat_page(request, room_name):
             room=room,
         ).fields["user"].queryset
 
-    rooms = _available_rooms(request.user)
+    rooms = _rooms_with_unread(
+        request.user,
+        _available_rooms(request.user),
+    )
 
     return render(
         request,
@@ -655,5 +729,32 @@ class RoomMediaView(LoginRequiredMixin, View):
                 "documents": documents,
                 "links": links,
             }
+        )
+
+
+class MarkRoomReadView(LoginRequiredMixin, View):
+    """Помечает комнату прочитанной (вызывается из чата)."""
+
+    def post(self, request, room_id):
+        room = get_object_or_404(
+            ChatRoom,
+            id=room_id,
+        )
+
+        if not _is_room_member(
+            room,
+            request.user.id,
+        ):
+            raise PermissionDenied(
+                "У вас нет доступа к этой комнате."
+            )
+
+        _mark_room_read(
+            request.user,
+            room,
+        )
+
+        return JsonResponse(
+            {"success": True}
         )
 
