@@ -468,6 +468,94 @@
 
 
     <!-- =========================
+         Модальное окно «Медиа»
+    ========================== -->
+
+    <div
+        id="media-modal"
+        class="modal hidden"
+    >
+
+        <div class="modal-content media-modal-content">
+
+            <div class="modal-header">
+
+                <h2>Медиа</h2>
+
+                <p>
+                    Файлы и ссылки, пересланные в комнату
+                </p>
+
+            </div>
+
+
+            <div
+                id="media-tabs"
+                class="media-tabs"
+            >
+
+                <button
+                    type="button"
+                    class="media-tab active"
+                    data-media-tab="photos"
+                >
+                    Фото
+                    <span class="media-tab-count"
+                          data-count="photos">0</span>
+                </button>
+
+                <button
+                    type="button"
+                    class="media-tab"
+                    data-media-tab="videos"
+                >
+                    Видео
+                    <span class="media-tab-count"
+                          data-count="videos">0</span>
+                </button>
+
+                <button
+                    type="button"
+                    class="media-tab"
+                    data-media-tab="documents"
+                >
+                    Документы
+                    <span class="media-tab-count"
+                          data-count="documents">0</span>
+                </button>
+
+                <button
+                    type="button"
+                    class="media-tab"
+                    data-media-tab="links"
+                >
+                    Ссылки
+                    <span class="media-tab-count"
+                          data-count="links">0</span>
+                </button>
+
+            </div>
+
+
+            <div
+                id="media-gallery"
+                class="media-gallery"
+            ></div>
+
+
+            <button
+                type="button"
+                class="modal-cancel-button media-modal-close"
+                data-close-modal="media-modal"
+            >
+                Закрыть
+            </button>
+
+        </div>
+    </div>
+
+
+    <!-- =========================
          Основной интерфейс чата
     ========================== -->
 
@@ -662,9 +750,18 @@
                         ✏ Изменить комнату
                     </button>
 
-                    <div class="menu-divider"></div>
-
                 {% endif %}
+
+
+                <button
+                    type="button"
+                    id="media-button"
+                    class="user-menu-item"
+                >
+                    🗂 Медиа
+                </button>
+
+                <div class="menu-divider"></div>
 
 
                 <div class="room-members-section">
@@ -848,17 +945,126 @@
         <!-- Ввод сообщения -->
         {% if is_room_member %}
 
+            <div
+                id="chat-upload-panel"
+                class="chat-upload-panel hidden"
+            >
+
+                <div
+                    class="chat-upload-files"
+                    id="chat-upload-files"
+                ></div>
+
+                <div class="chat-upload-controls">
+
+                    <input
+                        type="text"
+                        id="chat-upload-caption"
+                        class="chat-upload-caption"
+                        placeholder="Комментарий к сообщению..."
+                        autocomplete="off"
+                    >
+
+                    <button
+                        type="button"
+                        id="chat-upload-send"
+                        class="chat-upload-send"
+                    >
+                        Отправить
+                    </button>
+
+                    <button
+                        type="button"
+                        id="chat-upload-cancel"
+                        class="chat-upload-cancel"
+                    >
+                        Отмена
+                    </button>
+
+                </div>
+
+                <div
+                    id="chat-upload-status"
+                    class="chat-upload-status"
+                ></div>
+
+            </div>
+
             <div class="chat-input">
 
+                <button
+                    type="button"
+                    id="chat-attach-button"
+                    class="chat-input-button chat-attach-button"
+                    title="Прикрепить файл"
+                    aria-label="Прикрепить файл"
+                >
+                    <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 24 24"
+                        width="20"
+                        height="20"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        aria-hidden="true"
+                    >
+                        <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+                    </svg>
+                </button>
+
                 <input
-                    type="text"
-                    id="chat-message-input"
-                    placeholder="Введите сообщение..."
-                    autocomplete="off"
+                    type="file"
+                    id="chat-file-input"
+                    class="hidden"
+                    accept="image/*,video/*,audio/*,application/pdf,.txt,.zip,.doc,.docx,.xls,.xlsx,.pptx,.csv,.json,.md,.rtf,.epub"
+                    multiple
                 >
 
-                <button id="chat-message-submit">
-                    Отправить
+                <div
+                    id="chat-message-field"
+                    class="chat-message-field"
+                >
+
+                    <div
+                        id="chat-reply-preview"
+                        class="chat-reply-preview"
+                        hidden
+                    ></div>
+
+                    <input
+                        type="text"
+                        id="chat-message-input"
+                        placeholder="Введите сообщение..."
+                        autocomplete="off"
+                    >
+
+                </div>
+
+                <button
+                    type="button"
+                    id="chat-message-submit"
+                    class="chat-input-button chat-send-button"
+                    title="Отправить сообщение"
+                    aria-label="Отправить сообщение"
+                >
+                    <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 24 24"
+                        width="20"
+                        height="20"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        aria-hidden="true"
+                    >
+                        <line x1="5" y1="12" x2="19" y2="12" />
+                        <polyline points="12 5 19 12 12 19" />
+                    </svg>
                 </button>
 
             </div>
@@ -950,8 +1156,17 @@
             roomUrlTemplate:
                 "{% url 'chat' room_name='ROOM_NAME' %}",
 
+            removeMemberUrlTemplate:
+                "{% url 'remove_room_member' room_id=room.id user_id=0 %}",
+
             joinRoomUrl:
                 "{% url 'join_room' room_id=room.id %}",
+
+            sendFileUrl:
+                "{% url 'send_message_file' room_id=room.id %}",
+
+            mediaUrl:
+                "{% url 'room_media' room_id=room.id %}",
 
 
 
