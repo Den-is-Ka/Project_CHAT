@@ -1178,7 +1178,7 @@ button {
 
     gap: 16px;
 
-    padding: 20px;
+    padding: 10px;
 
     overflow-y: auto;
 
@@ -1195,6 +1195,31 @@ button {
     animation:
         fadeIn 0.2s ease-out;
 }
+
+.message-highlighted {
+    animation:
+        message-highlight
+        1.8s ease-out 1;
+}
+
+@keyframes message-highlight {
+
+    0% {
+        box-shadow:
+            0 0 0 3px var(--primary);
+    }
+
+    70% {
+        box-shadow:
+            0 0 0 3px var(--primary);
+    }
+
+    100% {
+        box-shadow:
+            0 0 0 0 transparent;
+    }
+}
+
 .message-hover-menu {
     position: absolute;
 
@@ -1331,6 +1356,8 @@ button {
     background: #2e283f;
 
     min-width: 0;
+
+    cursor: pointer;
 }
 
 .reply-quote-header {
@@ -1342,28 +1369,32 @@ button {
     margin-bottom: 4px;
 }
 
-.reply-quote-header span {
+.reply-quote-name {
     font-size: 13px;
-    font-weight: 600;
+    font-weight: 700;
 
-    color: var(--text);
+    color: var(--primary);
 }
 
-.reply-quote-avatar {
-    width: 18px;
-    height: 18px;
+.reply-quote-thumb-wrap {
+    display: inline-block;
 
-    border-radius: 50%;
-
-    font-size: 11px;
+    max-width: 100%;
 }
 
-.reply-quote-time {
-    margin-left: auto;
+.reply-quote-thumb {
+    display: block;
 
-    font-weight: 400;
+    width: 140px;
+    height: 90px;
 
-    color: var(--muted);
+    object-fit: cover;
+
+    border-radius: 6px;
+
+    margin-bottom: 4px;
+
+    background: #000;
 }
 
 .reply-quote-attachment,
@@ -1387,8 +1418,7 @@ button {
     background: rgba(255, 255, 255, 0.18);
 }
 
-.message.own .reply-quote-header span,
-.message.own .reply-quote-time {
+.message.own .reply-quote-name {
     color: white;
 }
 

@@ -756,74 +756,25 @@ function createReplyQuote(replyTo) {
     );
 
 
-    const avatar =
-        createAvatar(
-            replyTo.username,
-            replyTo.avatar,
-            "reply-quote-avatar"
-        );
-
-    header.appendChild(avatar);
-
-
-    const username =
+    const name =
         document.createElement("span");
 
-    username.textContent =
-        replyTo.username;
-
-    header.appendChild(username);
-
-
-    const time =
-        document.createElement("span");
-
-    time.classList.add(
-        "reply-quote-time"
+    name.classList.add(
+        "reply-quote-name"
     );
 
-    const date =
-        new Date(replyTo.created_at);
+    name.textContent =
+        replyTo.username;
 
-
-    time.textContent =
-        date.toLocaleTimeString(
-            [],
-            {
-                hour: "2-digit",
-                minute: "2-digit",
-            }
-        );
-
-    header.appendChild(time);
+    header.appendChild(name);
 
     quote.appendChild(header);
 
 
-    if (replyTo.attachment_type) {
-
-        const attachmentHint =
-            document.createElement("div");
-
-        attachmentHint.classList.add(
-            "reply-quote-attachment"
-        );
-
-        const typeNames = {
-            image: "Фото",
-            video: "Видео",
-            audio: "Аудио",
-            file: "Файл",
-        };
-
-        attachmentHint.textContent =
-            "📎 " + (
-                typeNames[replyTo.attachment_type]
-                || replyTo.attachment_type
-            );
-
-        quote.appendChild(attachmentHint);
-    }
+    appendReplyQuoteMedia(
+        quote,
+        replyTo
+    );
 
 
     if (replyTo.message) {
@@ -842,7 +793,146 @@ function createReplyQuote(replyTo) {
     }
 
 
+    quote.addEventListener(
+        "click",
+        function () {
+
+            scrollToMessage(
+                replyTo.id
+            );
+        }
+    );
+
+
     return quote;
+}
+
+
+function scrollToMessage(messageId) {
+
+    const target =
+        findMessageElement(messageId);
+
+    if (!target) {
+        return;
+    }
+
+    target.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+    });
+
+    target.classList.add(
+        "message-highlighted"
+    );
+
+    clearTimeout(
+        target._highlightTimer
+    );
+
+    target._highlightTimer =
+        setTimeout(
+            function () {
+                target.classList.remove(
+                    "message-highlighted"
+                );
+            },
+            2000
+        );
+}
+
+
+function appendReplyQuoteMedia(quote, replyTo) {
+
+    const type =
+        replyTo.attachment_type;
+
+    if (
+        !type
+        ||
+        !replyTo.attachment
+    ) {
+        return;
+    }
+
+    const url =
+        replyTo.attachment;
+
+    if (
+        type === "image"
+        ||
+        type === "video"
+    ) {
+
+        const link =
+            document.createElement("a");
+
+        link.href = url;
+
+        link.target = "_blank";
+
+        link.rel = "noopener";
+
+        link.classList.add(
+            "reply-quote-thumb-wrap"
+        );
+
+        const media =
+            document.createElement(
+                type === "image"
+                    ? "img"
+                    : "video"
+            );
+
+        media.src = url;
+
+        media.loading = "lazy";
+
+        media.classList.add(
+            "reply-quote-thumb"
+        );
+
+        if (type === "image") {
+
+            media.alt =
+                replyTo.attachment_name
+                || "Изображение";
+
+        } else {
+
+            media.preload = "metadata";
+
+            media.muted = true;
+
+            media.playsInline = true;
+        }
+
+        link.appendChild(media);
+
+        quote.appendChild(link);
+
+        return;
+    }
+
+    const label =
+        document.createElement("div");
+
+    label.classList.add(
+        "reply-quote-attachment"
+    );
+
+    const typeIcon =
+        type === "audio"
+            ? "🎵"
+            : "📎";
+
+    label.textContent =
+        typeIcon + " " + (
+            replyTo.attachment_name
+            || type
+        );
+
+    quote.appendChild(label);
 }
 
 
@@ -1955,13 +2045,13 @@ function sendMessage() {
         if (shouldReconnect) {
 
             const offlinePayload =
-                { message };
-
-            if (pendingReply) {
-
-                offlinePayload.reply_to_id =
-                    pendingReply;
-            }
+                pendingReply
+                    ? {
+                        type: "comment",
+                        text: message,
+                        reply_to_id: pendingReply,
+                    }
+                    : { message };
 
             pendingMessages.push(
                 offlinePayload
@@ -1989,7 +2079,7 @@ function sendMessage() {
     }
 
 
-    const payload = {
+    let payload = {
         message,
     };
 
@@ -1997,8 +2087,11 @@ function sendMessage() {
     // Если выбрано сообщение для ответа — прикрепляем reply.
     if (pendingReply) {
 
-        payload.reply_to_id =
-            pendingReply;
+        payload = {
+            type: "comment",
+            text: message,
+            reply_to_id: pendingReply,
+        };
     }
 
 
@@ -3144,7 +3237,8 @@ async function sendSelectedMedia() {
         const ok =
             await uploadMediaFile(
                 item.file,
-                caption
+                caption,
+                pendingReply
             );
 
         if (ok) {
@@ -3178,6 +3272,8 @@ async function sendSelectedMedia() {
 
         hideUploadPanel();
 
+        cancelReplyPreview();
+
         messageInput?.focus();
 
     } else {
@@ -3192,7 +3288,8 @@ async function sendSelectedMedia() {
 
 async function uploadMediaFile(
     file,
-    caption
+    caption,
+    replyToId
 ) {
 
     const formData =
@@ -3201,6 +3298,14 @@ async function uploadMediaFile(
     formData.append("file", file);
 
     formData.append("caption", caption || "");
+
+    if (replyToId) {
+
+        formData.append(
+            "reply_to_id",
+            replyToId
+        );
+    }
 
 
     try {
