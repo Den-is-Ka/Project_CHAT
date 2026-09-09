@@ -785,8 +785,11 @@ button {
 }
 
 .user-menu-button {
-    width: 32px;
-    height: 32px;
+    width: 38px;
+    min-width: 38px;
+    height: 38px;
+
+    flex-shrink: 0;
 
     display: flex;
     align-items: center;
@@ -794,26 +797,22 @@ button {
 
     padding: 0;
 
-    border: 1px solid var(--border);
+    border: none;
+
     border-radius: var(--radius);
 
-    background: var(--surface);
+    background: transparent;
     color: var(--text-muted);
-
-    font-size: 16px;
 
     cursor: pointer;
 
     transition:
         background 0.15s ease,
-        border-color 0.15s ease,
         color 0.15s ease;
 }
 
 .user-menu-button:hover {
-    background: var(--bg);
-
-    border-color: var(--primary);
+    background: var(--primary-light);
 
     color: var(--primary);
 }
@@ -2933,6 +2932,16 @@ button {
     cursor: not-allowed;
 }
 
+.confirm-delete-button {
+    background: var(--danger);
+}
+
+.confirm-delete-button:hover:not(:disabled) {
+    background: var(--danger);
+
+    filter: brightness(1.15);
+}
+
 .modal-cancel-button {
     width: 100%;
 
@@ -3728,7 +3737,10 @@ button {
 
 .chat-selection-button {
     width: 32px;
+    min-width: 32px;
     height: 32px;
+
+    flex-shrink: 0;
 
     display: flex;
     align-items: center;
@@ -3736,27 +3748,24 @@ button {
 
     padding: 0;
 
-    border: 1px solid var(--border);
+    border: none;
+
     border-radius: var(--radius);
 
-    background: var(--surface);
+    background: transparent;
     color: var(--text-muted);
-
-    font-size: 15px;
-    line-height: 1;
 
     cursor: pointer;
 
     transition:
         background 0.15s ease,
-        border-color 0.15s ease,
         color 0.15s ease;
 }
 
 .chat-selection-button:hover {
-    border-color: var(--primary);
+    background: var(--primary-light);
 
-    color: var(--text);
+    color: var(--primary);
 }
 
 .chat-selection-button[hidden] {
@@ -3768,7 +3777,9 @@ button {
 }
 
 .chat-selection-delete:hover {
-    border-color: var(--danger);
+    background: var(--danger-light);
+
+    color: var(--danger);
 }
 
 .chat-selection-cancel {
@@ -3776,7 +3787,7 @@ button {
 }
 
 .chat-selection-cancel:hover {
-    border-color: var(--border);
+    background: var(--danger-light);
 
     color: var(--danger);
 }
