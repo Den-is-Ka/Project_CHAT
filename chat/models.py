@@ -39,6 +39,12 @@ class Message(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
 
+    # Время последнего редактирования текста (null = сообщение не менялось).
+    edited_at = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+
     # Сообщение, на которое дан ответ (цитата). Reply-сообщение
     # показывает исходное сообщение в рамке-цитате.
     reply_to = models.ForeignKey(
