@@ -192,6 +192,75 @@ class SendMediaMessageViewTests(TransactionTestCase):
         self.assertEqual(message.text, "")
         self.assertEqual(message.attachment_type, "image")
 
+    def test_media_reply_attaches_reply_to(self):
+        original = Message.objects.create(
+            user=self.owner,
+            room=self.room,
+            text="исходное фото",
+        )
+
+        response = self.upload(
+            self.member,
+            file=self.make_image(),
+            caption="ответ с фото",
+            reply_to_id=original.id,
+        )
+
+        self.assertEqual(response.status_code, 201)
+
+        data = response.json()
+        reply_to = data["message"]["reply_to"] or {}
+        self.assertEqual(reply_to["id"], original.id)
+        self.assertEqual(reply_to["message"], "исходное фото")
+        self.assertEqual(data["message"]["message"], "ответ с фото")
+
+        message = Message.objects.get(
+            room=self.room,
+            attachment_type="image",
+        )
+        self.assertEqual(message.reply_to, original)
+
+    def test_media_reply_to_own_message_rejected(self):
+        own = Message.objects.create(
+            user=self.member,
+            room=self.room,
+            text="своё фото",
+        )
+
+        response = self.upload(
+            self.member,
+            file=self.make_image(),
+            caption="ответ самому себе",
+            reply_to_id=own.id,
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn(
+            "свои сообщения",
+            response.json()["error"],
+        )
+
+        self.assertFalse(
+            Message.objects.filter(
+                room=self.room,
+                reply_to=own,
+            ).exists()
+        )
+
+    def test_media_reply_to_missing_message_rejected(self):
+        response = self.upload(
+            self.member,
+            file=self.make_image(),
+            caption="ответ",
+            reply_to_id=999999,
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.json()["error"],
+            "Сообщение не найдено.",
+        )
+
     def test_video_attachment_type_detected(self):
         video = SimpleUploadedFile(
             "clip.mp4",
