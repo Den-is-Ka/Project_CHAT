@@ -1194,8 +1194,6 @@ function createMessageHoverMenu(data) {
 
     const messageId = data.id;
 
-    const messageUsername = data.username;
-
     const menu =
         document.createElement("div");
 
@@ -1205,106 +1203,34 @@ function createMessageHoverMenu(data) {
 
     menu.hidden = true;
 
+    // Меню при наведении — только кнопки реакций.
+    EMOJI_SET.forEach(function (emoji) {
 
-    const reactionButton =
-        document.createElement("button");
+        const button =
+            document.createElement("button");
 
-    reactionButton.type = "button";
+        button.type = "button";
 
-    reactionButton.className =
-        "hover-menu-btn hover-menu-reaction";
+        button.className =
+            "emoji-option";
 
-    reactionButton.title =
-        "Добавить реакцию";
+        button.textContent = emoji;
 
-    reactionButton.textContent =
-        "Реакция";
+        button.title = emoji;
 
-    const emojiPicker =
-        createEmojiPicker(
-            messageId,
-            chatConfig.username
+        button.addEventListener(
+            "click",
+            function () {
+
+                sendReaction(
+                    messageId,
+                    emoji
+                );
+            }
         );
 
-    emojiPicker.classList.add(
-        "hover-emoji-picker"
-    );
-
-    emojiPicker.hidden = true;
-
-    // По наведению на "Реакция" появляется список смайлов.
-    reactionButton.addEventListener(
-        "mouseenter",
-        function () {
-            emojiPicker.hidden = false;
-        }
-    );
-
-    reactionButton.addEventListener(
-        "mouseleave",
-        function () {
-            emojiPicker.hidden = true;
-        }
-    );
-
-    reactionButton.appendChild(
-        emojiPicker
-    );
-
-
-    const replyButton =
-        document.createElement("button");
-
-    replyButton.type = "button";
-
-    replyButton.className =
-        "hover-menu-btn hover-menu-reply";
-
-    replyButton.title = "Ответить";
-
-    replyButton.textContent =
-        "Ответить";
-
-    replyButton.addEventListener(
-        "click",
-        function () {
-
-            openReplyPreview(
-                messageId,
-                findMessageElement(messageId)
-            );
-        }
-    );
-
-
-    const messageButton =
-        document.createElement("button");
-
-    messageButton.type = "button";
-
-    messageButton.className =
-        "hover-menu-btn hover-menu-message";
-
-    messageButton.title =
-        "Написать личное сообщение";
-
-    messageButton.textContent =
-        "Сообщение";
-
-    messageButton.addEventListener(
-        "click",
-        function () {
-
-            openDirectMessage(
-                messageUsername
-            );
-        }
-    );
-
-
-    menu.appendChild(reactionButton);
-    menu.appendChild(replyButton);
-    menu.appendChild(messageButton);
+        menu.appendChild(button);
+    });
 
     return menu;
 }
@@ -1437,50 +1363,6 @@ function createReactionChip(
 
 
     return chip;
-}
-
-
-function createEmojiPicker(messageId, currentUser) {
-
-    const picker =
-        document.createElement("div");
-
-    picker.classList.add(
-        "emoji-picker"
-    );
-
-
-    EMOJI_SET.forEach(function (emoji) {
-
-        const item =
-            document.createElement("button");
-
-        item.type = "button";
-
-        item.className = "emoji-option";
-
-        item.textContent = emoji;
-
-        item.title = emoji;
-
-        item.addEventListener(
-            "click",
-            function () {
-
-                sendReaction(
-                    messageId,
-                    emoji
-                );
-
-                picker.remove();
-            }
-        );
-
-        picker.appendChild(item);
-    });
-
-
-    return picker;
 }
 
 
@@ -2493,15 +2375,21 @@ const chatSelectionCount =
     );
 
 
-const chatSelectionSelectAll =
-    document.getElementById(
-        "chat-selection-select-all"
-    );
-
-
 const chatSelectionCopy =
     document.getElementById(
         "chat-selection-copy"
+    );
+
+
+const chatSelectionForward =
+    document.getElementById(
+        "chat-selection-forward"
+    );
+
+
+const chatSelectionDelete =
+    document.getElementById(
+        "chat-selection-delete"
     );
 
 
@@ -2518,10 +2406,34 @@ let contextMenuData = null;
 let selectionMode = false;
 let selectedMessageIds = new Set();
 
-let forwardMessageId = null;
+let forwardMessageIds = [];
 
 
 const contextMenuItems = [
+    {
+        id: "reply",
+        icon: "↩️",
+        label: "Ответить",
+        title: "Ответить на сообщение",
+        show: function (data) {
+            return (
+                data.username !== chatConfig.username
+            );
+        },
+        handler: replyToMessage,
+    },
+    {
+        id: "message",
+        icon: "💬",
+        label: "Сообщение",
+        title: "Написать личное сообщение",
+        show: function (data) {
+            return (
+                data.username !== chatConfig.username
+            );
+        },
+        handler: directMessageAction,
+    },
     {
         id: "edit",
         icon: "✏️",
@@ -2720,6 +2632,11 @@ function openContextMenu(event, messageElement) {
         return;
     }
 
+    // Показываем меню без отрисовки, чтобы замерить реальные размеры
+    // (в состоянии display:none offsetWidth/offsetHeight равны 0).
+    contextMenu.style.visibility = "hidden";
+    contextMenu.hidden = false;
+
     const menuWidth =
         contextMenu.offsetWidth;
 
@@ -2728,23 +2645,45 @@ function openContextMenu(event, messageElement) {
 
     const margin = 8;
 
+    // Ограничиваем меню границами области чата.
+    let minLeft = margin;
+    let minTop = margin;
+    let maxRight = window.innerWidth - margin;
+    let maxBottom = window.innerHeight - margin;
+
+    if (chatLog) {
+
+        const bounds =
+            chatLog.getBoundingClientRect();
+
+        if (menuHeight <= bounds.height - margin * 2) {
+            minTop = bounds.top + margin;
+            maxBottom = bounds.bottom - margin;
+        }
+
+        if (menuWidth <= bounds.width - margin * 2) {
+            minLeft = bounds.left + margin;
+            maxRight = bounds.right - margin;
+        }
+    }
+
     let left = event.clientX;
     let top = event.clientY;
 
-    if (left + menuWidth > window.innerWidth - margin) {
-        left = window.innerWidth - menuWidth - margin;
+    if (left + menuWidth > maxRight) {
+        left = maxRight - menuWidth;
     }
 
-    if (top + menuHeight > window.innerHeight - margin) {
-        top = window.innerHeight - menuHeight - margin;
+    if (top + menuHeight > maxBottom) {
+        top = maxBottom - menuHeight;
     }
 
-    if (left < margin) {
-        left = margin;
+    if (left < minLeft) {
+        left = minLeft;
     }
 
-    if (top < margin) {
-        top = margin;
+    if (top < minTop) {
+        top = minTop;
     }
 
     contextMenu.style.left =
@@ -2753,6 +2692,7 @@ function openContextMenu(event, messageElement) {
     contextMenu.style.top =
         top + "px";
 
+    contextMenu.style.visibility = "";
     contextMenu.hidden = false;
 }
 
@@ -2931,6 +2871,46 @@ async function copyMessage() {
             "Не удалось скопировать.",
             "error"
         );
+    }
+}
+
+
+function replyToMessage() {
+
+    const messageId =
+        contextMenuData
+            ? contextMenuData.id
+            : null;
+
+    closeContextMenu();
+
+    if (!messageId) {
+        return;
+    }
+
+    const messageElement =
+        findMessageElement(messageId);
+
+    if (messageElement) {
+        openReplyPreview(
+            messageId,
+            messageElement
+        );
+    }
+}
+
+
+function directMessageAction() {
+
+    const username =
+        contextMenuData
+            ? contextMenuData.username
+            : null;
+
+    closeContextMenu();
+
+    if (username) {
+        openDirectMessage(username);
     }
 }
 
@@ -3366,10 +3346,11 @@ function openForwardModal() {
             "forward-message-error"
         );
 
-    forwardMessageId =
-        contextMenuData
-            ? contextMenuData.id
-            : null;
+    // Если вызван из контекстного меню — пересылаем одно сообщение.
+    if (contextMenuData) {
+        forwardMessageIds =
+            [contextMenuData.id];
+    }
 
     closeContextMenu();
 
@@ -3458,74 +3439,78 @@ if (forwardMessageForm) {
                 return;
             }
 
-            const url =
-                chatConfig.forwardMessageUrlTemplate.replace(
-                    "0",
-                    String(forwardMessageId)
-                );
+            const ids =
+                forwardMessageIds;
 
-            try {
+            let lastError =
+                null;
 
-                const response =
-                    await apiRequest(
-                        url,
-                        {
-                            method: "POST",
-                            body: new URLSearchParams({
-                                target_room_id: targetRoomId,
-                            }),
-                        }
+            for (const messageId of ids) {
+
+                const url =
+                    chatConfig.forwardMessageUrlTemplate.replace(
+                        "0",
+                        String(messageId)
                     );
 
-                const data =
-                    await response.json();
+                try {
 
-                if (data.success) {
+                    const response =
+                        await apiRequest(
+                            url,
+                            {
+                                method: "POST",
+                                body: new URLSearchParams({
+                                    target_room_id: targetRoomId,
+                                }),
+                            }
+                        );
 
-                    closeModal(
-                        document.getElementById(
-                            "forward-message-modal"
-                        )
-                    );
+                    const data =
+                        await response.json();
 
-                    showToast(
-                        "Сообщение переслано.",
-                        "ok"
-                    );
+                    if (!data.success) {
+                        lastError =
+                            data.error
+                            ||
+                            "Не удалось переслать сообщение.";
+                    }
                 }
-                else {
-
-                    const message =
-                        data.error
-                        ||
+                catch (error) {
+                    lastError =
                         "Не удалось переслать сообщение.";
-
-                    if (errorEl) {
-                        errorEl.textContent =
-                            message;
-
-                        errorEl.classList.remove(
-                            "hidden"
-                        );
-                    }
-                    else {
-                        showToast(
-                            message,
-                            "error"
-                        );
-                    }
                 }
             }
-            catch (error) {
 
-                if (errorEl) {
-                    errorEl.textContent =
-                        "Не удалось переслать сообщение.";
+            closeModal(
+                document.getElementById(
+                    "forward-message-modal"
+                )
+            );
 
-                    errorEl.classList.remove(
-                        "hidden"
-                    );
-                }
+            forwardMessageIds = [];
+
+            if (lastError) {
+                showToast(
+                    lastError,
+                    "error"
+                );
+            }
+            else {
+                const count =
+                    ids.length;
+
+                const words =
+                    count === 1
+                        ? "Сообщение переслано."
+                        : count < 5
+                            ? "Сообщения пересланы."
+                            : "Сообщений переслано.";
+
+                showToast(
+                    words,
+                    "ok"
+                );
             }
         }
     );
@@ -3609,6 +3594,15 @@ function setMessageSelected(messageId, messageElement, selected) {
     }
 
     updateSelectionCount();
+
+    // Сняли выделение со всех сообщений — выходим из режима.
+    if (
+        selectionMode
+        &&
+        selectedMessageIds.size === 0
+    ) {
+        exitSelectionMode();
+    }
 }
 
 
@@ -3631,7 +3625,41 @@ function updateSelectionCount() {
 
     if (chatSelectionBar) {
         chatSelectionBar.hidden =
-            !selectionMode;
+            !selectionMode
+            ||
+            selectedMessageIds.size === 0;
+    }
+
+    // Удаление видно, только если ВЫБРАНЫ ИСКЛЮЧИТЕЛЬНО СВОИ сообщения.
+    if (chatSelectionDelete) {
+
+        let allOwn = true;
+
+        selectedMessageIds.forEach(
+            function (messageId) {
+
+                const element =
+                    findMessageElement(messageId);
+
+                const data =
+                    element
+                        ? element.__messageData
+                        : null;
+
+                if (
+                    data
+                    &&
+                    data.username !== chatConfig.username
+                ) {
+                    allOwn = false;
+                }
+            }
+        );
+
+        chatSelectionDelete.hidden =
+            !allOwn
+            ||
+            selectedMessageIds.size === 0;
     }
 }
 
@@ -3673,48 +3701,6 @@ if (chatLog) {
             toggleMessageSelection(
                 messageElement.dataset.messageId,
                 messageElement
-            );
-        }
-    );
-}
-
-
-if (chatSelectionSelectAll) {
-
-    chatSelectionSelectAll.addEventListener(
-        "click",
-        function () {
-
-            if (!chatLog) {
-                return;
-            }
-
-            const elements =
-                Array.from(
-                    chatLog.querySelectorAll(
-                        ".message"
-                    )
-                );
-
-            const allSelected =
-                elements.length > 0
-                &&
-                elements.every(
-                    function (element) {
-                        return selectedMessageIds.has(
-                            element.dataset.messageId
-                        );
-                    }
-                );
-
-            elements.forEach(
-                function (element) {
-                    setMessageSelected(
-                        element.dataset.messageId,
-                        element,
-                        !allSelected
-                    );
-                }
             );
         }
     );
@@ -3773,6 +3759,98 @@ if (chatSelectionCopy) {
                     "error"
                 );
             }
+        }
+    );
+}
+
+
+if (chatSelectionForward) {
+
+    chatSelectionForward.addEventListener(
+        "click",
+        function () {
+
+            if (!selectedMessageIds.size) {
+                return;
+            }
+
+            forwardMessageIds =
+                Array.from(
+                    selectedMessageIds
+                );
+
+            openForwardModal();
+        }
+    );
+}
+
+
+if (chatSelectionDelete) {
+
+    chatSelectionDelete.addEventListener(
+        "click",
+        async function () {
+
+            if (!selectedMessageIds.size) {
+                return;
+            }
+
+            const count =
+                selectedMessageIds.size;
+
+            if (
+                !window.confirm(
+                    "Удалить "
+                    + count
+                    + " сообщени"
+                    + (count === 1
+                        ? "е"
+                        : count < 5
+                            ? "я"
+                            : "й"
+                    )
+                    + "?"
+                )
+            ) {
+                return;
+            }
+
+            const ids =
+                Array.from(
+                    selectedMessageIds
+                );
+
+            exitSelectionMode();
+
+            for (const messageId of ids) {
+
+                const url =
+                    chatConfig
+                        .deleteMessageUrlTemplate
+                        .replace(
+                            "0",
+                            String(messageId)
+                        );
+
+                try {
+                    await apiRequest(
+                        url,
+                        { method: "POST" }
+                    );
+
+                    removeMessageElement(
+                        messageId
+                    );
+                }
+                catch (error) {
+                    // пропускаем неудачные
+                }
+            }
+
+            showToast(
+                "Удалено.",
+                "ok"
+            );
         }
     );
 }
