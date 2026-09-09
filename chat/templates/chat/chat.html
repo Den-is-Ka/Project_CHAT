@@ -338,6 +338,53 @@
 
 
     <!-- =========================
+         Модальное окно подтверждения удаления
+    ========================== -->
+
+    <div
+        id="confirm-delete-modal"
+        class="modal hidden"
+    >
+
+        <div class="modal-content">
+
+            <div class="modal-header">
+
+                <h2>Удаление сообщения</h2>
+
+                <p
+                    id="confirm-delete-message"
+                ></p>
+
+            </div>
+
+            <form id="confirm-delete-form">
+
+                {% csrf_token %}
+
+                <button
+                    type="submit"
+                    class="primary-button confirm-delete-button"
+                >
+                    Удалить
+                </button>
+
+                <button
+                    type="button"
+                    class="modal-cancel-button"
+                    data-close-modal="confirm-delete-modal"
+                >
+                    Отмена
+                </button>
+
+            </form>
+
+        </div>
+
+    </div>
+
+
+    <!-- =========================
          Модальное окно редактирования комнаты
     ========================== -->
 
@@ -1070,25 +1117,95 @@
                             type="button"
                             id="chat-selection-copy"
                             class="chat-selection-button"
-                        >📋</button>
+                            title="Копировать"
+                        >
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                viewBox="0 0 24 24"
+                                width="18"
+                                height="18"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                aria-hidden="true"
+                            >
+                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                            </svg>
+                        </button>
 
                         <button
                             type="button"
                             id="chat-selection-forward"
                             class="chat-selection-button"
-                        >➡️</button>
+                            title="Переслать"
+                        >
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                viewBox="0 0 24 24"
+                                width="18"
+                                height="18"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                aria-hidden="true"
+                            >
+                                <line x1="5" y1="12" x2="19" y2="12" />
+                                <polyline points="12 5 19 12 12 19" />
+                            </svg>
+                        </button>
 
                         <button
                             type="button"
                             id="chat-selection-delete"
                             class="chat-selection-button chat-selection-delete"
-                        >🗑️</button>
+                            title="Удалить"
+                        >
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                viewBox="0 0 24 24"
+                                width="18"
+                                height="18"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                aria-hidden="true"
+                            >
+                                <polyline points="3 6 5 6 21 6" />
+                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                                <line x1="10" y1="11" x2="10" y2="17" />
+                                <line x1="14" y1="11" x2="14" y2="17" />
+                            </svg>
+                        </button>
 
                         <button
                             type="button"
                             id="chat-selection-cancel"
                             class="chat-selection-button chat-selection-cancel"
-                        >✕</button>
+                            title="Отмена"
+                        >
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                viewBox="0 0 24 24"
+                                width="18"
+                                height="18"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                aria-hidden="true"
+                            >
+                                <line x1="18" y1="6" x2="6" y2="18" />
+                                <line x1="6" y1="6" x2="18" y2="18" />
+                            </svg>
+                        </button>
 
                     </div>
 
@@ -1100,7 +1217,22 @@
                         aria-label="Меню пользователя"
                         type="button"
                     >
-                        ☰
+                        <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 24 24"
+                            width="20"
+                            height="20"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            aria-hidden="true"
+                        >
+                            <line x1="3" y1="6" x2="21" y2="6" />
+                            <line x1="3" y1="12" x2="21" y2="12" />
+                            <line x1="3" y1="18" x2="21" y2="18" />
+                        </svg>
                     </button>
 
                     <div
