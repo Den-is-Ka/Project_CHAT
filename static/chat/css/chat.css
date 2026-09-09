@@ -506,6 +506,36 @@ button {
 
 
 /* =========================
+   Rooms sections (чаты / контакты)
+========================= */
+
+.rooms-section {
+    margin-bottom: 10px;
+}
+
+.rooms-section-title {
+    padding: 6px 10px 4px;
+
+    font-size: 11px;
+    font-weight: 700;
+
+    letter-spacing: 0.6px;
+
+    text-transform: uppercase;
+
+    color: var(--text-muted);
+}
+
+.rooms-section-title[hidden] {
+    display: none;
+}
+
+.rooms-sidebar.collapsed .rooms-section-title {
+    display: none;
+}
+
+
+/* =========================
    Create room
 ========================= */
 

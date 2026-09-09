@@ -355,6 +355,13 @@ function handleWebSocketMessage(event) {
             break;
 
 
+        case "unread_update":
+
+            applyUnreadUpdate(data);
+
+            break;
+
+
         default:
 
             console.warn(
@@ -4439,7 +4446,7 @@ function addMemberToMenu(member) {
     element.appendChild(username);
 
 
-    if (chatConfig.isRoomOwner) {
+    if (chatConfig.isRoomOwner && !chatConfig.isDirect) {
 
         const removeButton =
             document.createElement("button");
@@ -5587,6 +5594,14 @@ const roomLinks =
     );
 
 
+const roomsSections =
+    Array.from(
+        document.querySelectorAll(
+            ".rooms-list .rooms-section"
+        )
+    );
+
+
 function filterRooms() {
 
     if (!roomsSearchInput) {
@@ -5621,6 +5636,42 @@ function filterRooms() {
         }
     );
 
+    roomsSections.forEach(
+        function (section) {
+
+            const title =
+                section.querySelector(
+                    ".rooms-section-title"
+                );
+
+            if (!title) {
+                return;
+            }
+
+            let sectionVisible =
+                false;
+
+            const sectionLinks =
+                section.querySelectorAll(
+                    ".room-link"
+                );
+
+            sectionLinks.forEach(
+                function (link) {
+
+                    if (!link.hidden) {
+                        sectionVisible = true;
+                    }
+                }
+            );
+
+            title.hidden =
+                query !== ""
+                &&
+                !sectionVisible;
+        }
+    );
+
     if (roomsFilteredEmpty) {
         roomsFilteredEmpty.hidden =
             !(
@@ -5643,6 +5694,102 @@ if (roomsSearchInput) {
         "search",
         filterRooms
     );
+}
+
+
+// Обновляет бейдж непрочитанных в списке чатов в реальном времени.
+function applyUnreadUpdate(data) {
+
+    if (
+        !data
+        ||
+        data.room_id === chatConfig.roomId
+    ) {
+        return;
+    }
+
+    const link =
+        document.querySelector(
+            `.room-link[data-room-id="${data.room_id}"]`
+        );
+
+    if (!link) {
+        return;
+    }
+
+    const avatar =
+        link.querySelector(
+            ".room-avatar"
+        );
+
+    if (!avatar) {
+        return;
+    }
+
+    let badge =
+        avatar.querySelector(
+            ".room-unread"
+        );
+
+    if (data.unread_count > 0) {
+
+        if (!badge) {
+
+            badge =
+                document.createElement(
+                    "span"
+                );
+
+            badge.className =
+                "room-unread";
+
+            badge.title =
+                "Непрочитанные сообщения";
+
+            avatar.appendChild(
+                badge
+            );
+        }
+
+        badge.textContent =
+            data.unread_count;
+
+        // Комнаты с непрочитанными в разделе «Чаты» поднимаются
+        // наверх, как при перезагрузке (сортируются по убыванию).
+        const section =
+            link.closest(
+                ".rooms-section"
+            );
+
+        if (
+            section
+            &&
+            section.dataset.sectionName
+                === "chats"
+        ) {
+
+            const firstRoomLink =
+                section.querySelector(
+                    ".room-link"
+                );
+
+            if (
+                firstRoomLink
+                &&
+                firstRoomLink !== link
+            ) {
+
+                section.insertBefore(
+                    link,
+                    firstRoomLink
+                );
+            }
+        }
+
+    } else if (badge) {
+
+        badge.remove();
+    }
 }
 
 
