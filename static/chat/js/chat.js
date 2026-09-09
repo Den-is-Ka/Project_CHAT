@@ -3274,57 +3274,171 @@ function deleteMessage() {
 
     closeContextMenu();
 
-    if (
-        !messageId
-        ||
-        !window.confirm(
-            "Удалить это сообщение?"
-        )
-    ) {
+    if (!messageId) {
         return;
     }
 
-    const url =
-        chatConfig.deleteMessageUrlTemplate.replace(
-            "0",
-            String(messageId)
-        );
+    openConfirmDelete(
+        [messageId]
+    );
+}
 
-    apiRequest(
-        url,
-        { method: "POST" }
-    )
-        .then(
-            async function (response) {
 
-                const data =
-                    await response.json();
+// Ожидающее удаление сообщений (подтверждается в модале).
+let pendingDeleteIds = null;
 
-                if (data.success) {
-                    removeMessageElement(messageId);
-                    showToast(
-                        "Сообщение удалено.",
-                        "ok"
+const confirmDeleteModal =
+    document.getElementById(
+        "confirm-delete-modal"
+    );
+
+const confirmDeleteMessage =
+    document.getElementById(
+        "confirm-delete-message"
+    );
+
+
+function openConfirmDelete(ids) {
+
+    pendingDeleteIds = ids;
+
+    const count = ids.length;
+
+    if (confirmDeleteMessage) {
+
+        let text;
+
+        if (count === 1) {
+            text =
+                "Вы уверены, что хотите удалить "
+                + "это сообщение?";
+        }
+        else if (count < 5) {
+            text =
+                "Вы уверены, что хотите удалить "
+                + count
+                + " сообщения?";
+        }
+        else {
+            text =
+                "Вы уверены, что хотите удалить "
+                + count
+                + " сообщений?";
+        }
+
+        confirmDeleteMessage.textContent =
+            text;
+    }
+
+    openModal(confirmDeleteModal);
+}
+
+
+// Массовое удаление подтверждённых сообщений.
+async function deleteMessages(ids) {
+
+    let lastError = null;
+
+    for (const messageId of ids) {
+
+        const url =
+            chatConfig.deleteMessageUrlTemplate.replace(
+                "0",
+                String(messageId)
+            );
+
+        try {
+            const response =
+                await apiRequest(
+                    url,
+                    { method: "POST" }
+                );
+
+            const data =
+                await response
+                    .json()
+                    .catch(
+                        function () {
+                            return null;
+                        }
                     );
-                }
-                else {
-                    showToast(
-                        data.error
-                        ||
-                        "Не удалось удалить сообщение.",
-                        "error"
-                    );
-                }
-            }
-        )
-        .catch(
-            function () {
-                showToast(
-                    "Не удалось удалить сообщение.",
-                    "error"
+
+            if (data && data.success) {
+                removeMessageElement(
+                    messageId
                 );
             }
+            else {
+                lastError =
+                    (data && data.error)
+                    ||
+                    "Не удалось удалить сообщение.";
+            }
+        }
+        catch (error) {
+            lastError =
+                "Не удалось удалить сообщение.";
+        }
+    }
+
+    if (lastError) {
+        showToast(
+            lastError,
+            "error"
         );
+    }
+    else {
+        showToast(
+            "Удалено.",
+            "ok"
+        );
+    }
+}
+
+
+const confirmDeleteForm =
+    document.getElementById(
+        "confirm-delete-form"
+    );
+
+
+if (confirmDeleteForm) {
+
+    confirmDeleteForm.addEventListener(
+        "submit",
+        async function (event) {
+
+            event.preventDefault();
+
+            if (
+                !confirmDeleteModal
+                ||
+                confirmDeleteModal.classList.contains(
+                    "hidden"
+                )
+            ) {
+                return;
+            }
+
+            const ids = pendingDeleteIds;
+
+            pendingDeleteIds = null;
+
+            closeModal(confirmDeleteModal);
+
+            exitSelectionMode();
+
+            if (
+                !ids
+                ||
+                !ids.length
+            ) {
+                return;
+            }
+
+            await deleteMessages(ids);
+        }
+    );
 }
 
 
@@ -3789,67 +3903,16 @@ if (chatSelectionDelete) {
 
     chatSelectionDelete.addEventListener(
         "click",
-        async function () {
+        function () {
 
             if (!selectedMessageIds.size) {
                 return;
             }
 
-            const count =
-                selectedMessageIds.size;
-
-            if (
-                !window.confirm(
-                    "Удалить "
-                    + count
-                    + " сообщени"
-                    + (count === 1
-                        ? "е"
-                        : count < 5
-                            ? "я"
-                            : "й"
-                    )
-                    + "?"
-                )
-            ) {
-                return;
-            }
-
-            const ids =
+            openConfirmDelete(
                 Array.from(
                     selectedMessageIds
-                );
-
-            exitSelectionMode();
-
-            for (const messageId of ids) {
-
-                const url =
-                    chatConfig
-                        .deleteMessageUrlTemplate
-                        .replace(
-                            "0",
-                            String(messageId)
-                        );
-
-                try {
-                    await apiRequest(
-                        url,
-                        { method: "POST" }
-                    );
-
-                    removeMessageElement(
-                        messageId
-                    );
-                }
-                catch (error) {
-                    // пропускаем неудачные
-                }
-            }
-
-            showToast(
-                "Удалено.",
-                "ok"
+                )
             );
         }
     );
