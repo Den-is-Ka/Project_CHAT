@@ -275,7 +275,7 @@
          Модальное окно редактирования комнаты
     ========================== -->
 
-    {% if is_room_owner %}
+    {% if is_room_owner and not is_direct %}
 
     <div
         id="edit-room-modal"
@@ -399,7 +399,7 @@
     <!-- =========================
          Модальное окно добавления участника
     ========================== -->
-    {% if is_room_owner %}
+    {% if is_room_owner and not is_direct %}
     <div id="add-member-modal" class="modal hidden">
 
         <div class="modal-content">
@@ -596,57 +596,137 @@
 
         <div class="rooms-list">
 
-            {% for chat_room in rooms %}
+            {% if rooms %}
 
-                <a
-                    href="{% url 'chat' chat_room.name %}"
-                    class="room-link {% if room.name == chat_room.name %}active{% endif %}"
-                    data-room-name="{{ chat_room.name|lower }}"
+                <div
+                    class="rooms-section"
+                    data-section-name="chats"
                 >
-                    <div class="room-avatar">
 
-                        {% if chat_room.avatar %}
-                            <img
-                                src="{{ chat_room.avatar.url }}"
-                                alt="{{ chat_room.display_name|default:chat_room.name }}"
-                            >
-                        {% else %}
-                            {{ chat_room.display_name|default:chat_room.name|first|upper }}
-                        {% endif %}
-
-                        {% if chat_room.is_private %}
-                            <span
-                                class="room-private-icon"
-                                title="Приватная комната"
-                            >
-                                🔒
-                            </span>
-                        {% endif %}
-
-                        {% if chat_room.unread_count %}
-                            <span
-                                class="room-unread"
-                                title="Непрочитанные сообщения"
-                            >
-                                {{ chat_room.unread_count }}
-                            </span>
-                        {% endif %}
-
+                    <div class="rooms-section-title">
+                        Чаты
                     </div>
 
-                    <span class="room-name">
-                        {{ chat_room.display_name|default:chat_room.name }}
-                    </span>
+                    {% for chat_room in rooms %}
 
-                </a>
+                        <a
+                            href="{% url 'chat' chat_room.name %}"
+                            class="room-link {% if room.name == chat_room.name %}active{% endif %}"
+                            data-room-name="{{ chat_room.display_name|default:chat_room.name|lower }}"
+                            data-room-id="{{ chat_room.id }}"
+                        >
+                            <div class="room-avatar">
 
-            {% empty %}
+                                {% if chat_room.avatar %}
+                                    <img
+                                        src="{{ chat_room.avatar.url }}"
+                                        alt="{{ chat_room.display_name|default:chat_room.name }}"
+                                    >
+                                {% else %}
+                                    {{ chat_room.display_name|default:chat_room.name|first|upper }}
+                                {% endif %}
+
+                                {% if chat_room.is_private %}
+                                    <span
+                                        class="room-private-icon"
+                                        title="Приватная комната"
+                                    >
+                                        🔒
+                                    </span>
+                                {% endif %}
+
+                                {% if chat_room.unread_count %}
+                                    <span
+                                        class="room-unread"
+                                        title="Непрочитанные сообщения"
+                                    >
+                                        {{ chat_room.unread_count }}
+                                    </span>
+                                {% endif %}
+
+                            </div>
+
+                            <span class="room-name">
+                                {{ chat_room.display_name|default:chat_room.name }}
+                            </span>
+
+                        </a>
+
+                    {% endfor %}
+
+                </div>
+
+            {% endif %}
+
+            {% if contacts %}
+
+                <div
+                    class="rooms-section"
+                    data-section-name="contacts"
+                >
+
+                    <div class="rooms-section-title">
+                        Контакты
+                    </div>
+
+                    {% for contact in contacts %}
+
+                        <a
+                            href="{% url 'chat' contact.name %}"
+                            class="room-link {% if room.name == contact.name %}active{% endif %}"
+                            data-room-name="{{ contact.display_name|default:contact.name|lower }}"
+                            data-room-id="{{ contact.id }}"
+                        >
+                            <div class="room-avatar">
+
+                                {% if contact.avatar %}
+                                    <img
+                                        src="{{ contact.avatar.url }}"
+                                        alt="{{ contact.display_name|default:contact.name }}"
+                                    >
+                                {% else %}
+                                    {{ contact.display_name|default:contact.name|first|upper }}
+                                {% endif %}
+
+                                {% if contact.is_private %}
+                                    <span
+                                        class="room-private-icon"
+                                        title="Приватная комната"
+                                    >
+                                        🔒
+                                    </span>
+                                {% endif %}
+
+                                {% if contact.unread_count %}
+                                    <span
+                                        class="room-unread"
+                                        title="Непрочитанные сообщения"
+                                    >
+                                        {{ contact.unread_count }}
+                                    </span>
+                                {% endif %}
+
+                            </div>
+
+                            <span class="room-name">
+                                {{ contact.display_name|default:contact.name }}
+                            </span>
+
+                        </a>
+
+                    {% endfor %}
+
+                </div>
+
+            {% endif %}
+
+            {% if not rooms and not contacts %}
 
                 <div class="rooms-empty">
                     Нет доступных чатов
                 </div>
 
-            {% endfor %}
+            {% endif %}
 
             <div
                 id="rooms-filtered-empty"
@@ -758,16 +838,18 @@
                             {{ room.display_name|default:room.name }}
                         </strong>
 
-                        <span id="room-menu-description">
-                            {{ room.description|default:"Без описания" }}
-                        </span>
+                        {% if not is_direct %}
+                            <span id="room-menu-description">
+                                {{ room.description|default:"Без описания" }}
+                            </span>
+                        {% endif %}
 
                     </div>
 
                 </div>
 
 
-                {% if is_room_owner %}
+{% if is_room_owner and not is_direct %}
 
                     <button
                         type="button"
@@ -778,7 +860,6 @@
                     </button>
 
                 {% endif %}
-
 
                 <button
                     type="button"
@@ -843,13 +924,13 @@
                                 </span>
 
 
-                                {% if member.id == room.owner_id %}
+                                {% if not is_direct and member.id == room.owner_id %}
 
                                     <span class="room-owner">
                                         владелец
                                     </span>
 
-                                {% elif is_room_owner %}
+                                {% elif is_room_owner and not is_direct %}
 
                                     <button
                                         type="button"
@@ -869,7 +950,7 @@
                     </div>
 
 
-                    {% if is_room_owner %}
+                    {% if is_room_owner and not is_direct %}
 
                         <button
                             type="button"
@@ -1191,12 +1272,22 @@
                     false
                 {% endif %},
 
+            isDirect:
+                {% if is_direct %}
+                    true
+                {% else %}
+                    false
+                {% endif %},
+
             isRoomMember:
                 {% if is_room_member %}
                     true
                 {% else %}
                     false
                 {% endif %},
+
+            roomId:
+                {{ room.id }},
 
             username:
                 "{{ user.username|default:''|escapejs }}",
