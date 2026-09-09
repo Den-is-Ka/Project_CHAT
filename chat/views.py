@@ -19,6 +19,7 @@ from chat.forms import (
     SendMediaMessageForm,
 )
 from chat.models import ChatRoom, Message, RoomReadState
+from chat.notifications import notify_room_unread
 from chat.utils import get_attachment_type, serialize_message
 from users.models import User
 
@@ -227,13 +228,22 @@ def chat_page(request, room_name):
         _available_rooms(request.user),
     )
 
+    # Личные (dm-*) комнаты — это "контакты", остальные — "чаты".
+    contacts = sorted(
+        (r for r in rooms if r.name.startswith("dm-")),
+        key=lambda r: r.display_name.lower(),
+    )
+    chat_rooms = [r for r in rooms if not r.name.startswith("dm-")]
+
     return render(
         request,
         "chat/chat.html",
         {
             "room": room,
             "room_name": room.name,
-            "rooms": rooms,
+            "is_direct": room.is_direct,
+            "rooms": chat_rooms,
+            "contacts": contacts,
             "room_members": room.members.all(),
             "is_room_owner": (request.user.is_authenticated and room.owner_id == request.user.id),
             "is_room_member": is_room_member,
@@ -613,6 +623,8 @@ class SendMediaMessageView(LoginRequiredMixin, View):
                     **payload,
                 },
             )
+
+        notify_room_unread(room.id, request.user.id)
 
         return JsonResponse(
             {

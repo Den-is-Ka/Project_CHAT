@@ -6,6 +6,7 @@ from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
 from django.core.cache import cache
 
+from . import notifications
 from .models import (
     REACTION_EMOJIS,
     ChatRoom,
@@ -75,6 +76,15 @@ class ChatConsumer(AsyncWebsocketConsumer):
             self.channel_name,
         )
 
+        # Личный канал пользователя: сюда приходят события
+        # о непрочитанных сообщениях в других комнатах.
+        self.user_group_name = f"user_{user.id}"
+
+        await self.channel_layer.group_add(
+            self.user_group_name,
+            self.channel_name,
+        )
+
         await self.accept()
 
         # Регистрируем пользователя как онлайн. Если у него уже
@@ -134,11 +144,17 @@ class ChatConsumer(AsyncWebsocketConsumer):
             # Обновляем список онлайн-пользователей.
             await self.broadcast_online_users()
 
-        # Удаляем соединение из группы.
+        # Удаляем соединение из групп.
         await self.channel_layer.group_discard(
             self.room_group_name,
             self.channel_name,
         )
+
+        if hasattr(self, "user_group_name"):
+            await self.channel_layer.group_discard(
+                self.user_group_name,
+                self.channel_name,
+            )
 
     async def schedule_leave_check(self, username):
         """Запускает отложенную проверку "ухода" пользователя."""
@@ -278,6 +294,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
             },
         )
 
+        # Сообщаем всем остальным участникам о непрочитанных.
+        await self.notify_room_unread(user.id)
+
     async def handle_reaction(self, incoming):
         """Ставит или убирает реакцию (эмодзи) на сообщение."""
 
@@ -388,6 +407,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
             },
         )
 
+        await self.notify_room_unread(user.id)
+
     async def send_ws_error(self, message):
         await self.send(
             text_data=json.dumps(
@@ -428,6 +449,19 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     "attachment_name": (event.get("attachment_name", "")),
                     "reactions": event.get("reactions", []),
                     "reply_to": event.get("reply_to"),
+                }
+            )
+        )
+
+    async def unread_update(self, event):
+        """Отправляет клиенту актуальный счётчик непрочитанных сообщений."""
+
+        await self.send(
+            text_data=json.dumps(
+                {
+                    "type": "unread_update",
+                    "room_id": event["room_id"],
+                    "unread_count": event["unread_count"],
                 }
             )
         )
@@ -582,6 +616,45 @@ class ChatConsumer(AsyncWebsocketConsumer):
             )
             for message in messages
         ]
+
+    async def notify_room_unread(self, sender_id):
+        """Рассылвает участникам комнаты актуальные счётчики непрочитанных.
+
+        Отправляется в личный канал каждого участника (кроме автора),
+        чтобы клиент обновил бейджи в списке чатов в реальном времени.
+        """
+
+        member_ids = await self.room_member_ids(self.room.id)
+
+        for user_id in member_ids:
+
+            if user_id == sender_id:
+                continue
+
+            unread = await self.user_unread_count(
+                self.room.id,
+                user_id,
+            )
+
+            await self.channel_layer.group_send(
+                f"user_{user_id}",
+                {
+                    "type": "unread_update",
+                    "room_id": self.room.id,
+                    "unread_count": unread,
+                },
+            )
+
+    @database_sync_to_async
+    def room_member_ids(self, room_id):
+        return notifications.room_member_ids(room_id)
+
+    @database_sync_to_async
+    def user_unread_count(self, room_id, user_id):
+        return notifications.user_unread_count(
+            room_id,
+            user_id,
+        )
 
     @database_sync_to_async
     def get_room(self, room_name):
