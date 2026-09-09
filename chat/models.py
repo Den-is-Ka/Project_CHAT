@@ -137,6 +137,10 @@ class ChatRoom(models.Model):
     def __str__(self):
         return self.name
 
+    @property
+    def is_direct(self):
+        return self.name.startswith("dm-")
+
 
 class RoomReadState(models.Model):
     """Граница прочитанного: id последнего сообщения, которое видел пользователь.
