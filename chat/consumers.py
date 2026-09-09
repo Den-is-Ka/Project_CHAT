@@ -427,11 +427,36 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     "avatar": event.get("avatar"),
                     "message": event.get("message", ""),
                     "created_at": event.get("created_at"),
+                    "edited_at": event.get("edited_at"),
                     "attachment": event.get("attachment"),
                     "attachment_type": (event.get("attachment_type", "")),
                     "attachment_name": (event.get("attachment_name", "")),
                     "reactions": event.get("reactions", []),
                     "reply_to": event.get("reply_to"),
+                }
+            )
+        )
+
+    async def message_updated(self, event):
+        """Отправляет клиенту обновлённое содержимое сообщения."""
+
+        await self.send(
+            text_data=json.dumps(
+                {
+                    "type": "message_updated",
+                    "message": event["message"],
+                }
+            )
+        )
+
+    async def message_deleted(self, event):
+        """Отправляет клиенту сигнал об удалении сообщения."""
+
+        await self.send(
+            text_data=json.dumps(
+                {
+                    "type": "message_deleted",
+                    "message_id": event["message_id"],
                 }
             )
         )
