@@ -115,6 +115,7 @@ def serialize_message(message, current_user_id=None):
         "avatar": (message.user.avatar.url if message.user.avatar else None),
         "message": message.text,
         "created_at": message.created_at.isoformat(),
+        "edited_at": (message.edited_at.isoformat() if message.edited_at else None),
         "attachment": (message.attachment.url if message.attachment else None),
         "attachment_type": message.attachment_type,
         "attachment_name": message.attachment_name,
