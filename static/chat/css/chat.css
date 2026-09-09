@@ -1211,6 +1211,7 @@ button {
     padding: 10px;
 
     overflow-y: auto;
+    overflow-x: hidden;
 
     background: var(--chat-bg);
 }
@@ -1253,23 +1254,24 @@ button {
 .message-hover-menu {
     position: absolute;
 
-    top: -18px;
-    right: -14px;
+    top: -14px;
+    right: auto;
+    left: 12px;
 
     z-index: 10;
 
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     flex-wrap: nowrap;
-    align-items: stretch;
+    align-items: center;
 
-    gap: 6px;
+    gap: 2px;
 
-    padding: 5px;
+    padding: 4px 6px;
 
     border: 1px solid var(--border);
 
-    border-radius: 10px;
+    border-radius: 999px;
 
     background: var(--surface);
 
@@ -1283,37 +1285,23 @@ button {
     display: none;
 }
 
-.hover-menu-btn {
-    display: inline-flex;
-    align-items: center;
+.message-hover-menu .emoji-option {
+    width: 30px;
+    height: 30px;
 
-    position: relative;
+    border-radius: 50%;
 
-    gap: 4px;
-
-    padding: 5px 10px;
-
-    border: none;
-    border-radius: 0;
-
-    background: transparent;
-
-    color: var(--secondary);
-
-    font-size: 13px;
-    line-height: 1;
-
-    cursor: pointer;
+    font-size: 17px;
 
     transition:
-        background 0.15s ease,
-        color 0.15s ease;
+        transform 0.15s ease,
+        background 0.15s ease;
 }
 
-.hover-menu-btn:hover {
-    background: var(--primary-light);
+.message-hover-menu .emoji-option:hover {
+    transform: scale(1.15);
 
-    color: var(--primary);
+    background: rgba(255, 255, 255, 0.08);
 }
 
 .message.own {
@@ -1639,44 +1627,6 @@ button {
     font-weight: 600;
 }
 
-.message-hover-menu .emoji-picker {
-    position: absolute;
-
-    top: 100%;
-    bottom: auto;
-
-    left: 0;
-}
-
-.emoji-picker[hidden] {
-    display: none;
-}
-
-.emoji-picker {
-    position: absolute;
-
-    z-index: 100;
-
-    bottom: 100%;
-
-    left: 0;
-
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-
-    gap: 2px;
-
-    padding: 6px;
-
-    border: 1px solid var(--border);
-
-    border-radius: 12px;
-
-    background: var(--surface);
-
-    box-shadow: var(--shadow-lg, 0 12px 32px rgba(0, 0, 0, 0.55));
-}
-
 .emoji-option {
     display: flex;
     align-items: center;
@@ -1722,16 +1672,6 @@ button {
     background: rgba(255, 255, 255, 0.28);
 
     border-color: white;
-}
-
-.message.own .emoji-picker {
-    background: #191523;
-
-    border-color: rgba(255, 255, 255, 0.2);
-}
-
-.message.own .emoji-option:hover {
-    background: rgba(255, 255, 255, 0.12);
 }
 
 /* =========================
@@ -3741,10 +3681,6 @@ button {
     user-select: none;
 }
 
-.chat-log.selection-mode .message-content {
-    pointer-events: none;
-}
-
 .message.selected {
     background: var(--primary-light);
 }
@@ -3753,17 +3689,20 @@ button {
     display: none;
 }
 
+.header-right {
+    display: flex;
+    align-items: center;
+
+    gap: 8px;
+
+    margin-left: auto;
+}
+
 .chat-selection-bar {
     display: flex;
     align-items: center;
 
-    gap: 10px;
-
-    padding: 8px 12px;
-
-    border-top: 1px solid var(--border);
-
-    background: var(--panel);
+    gap: 4px;
 }
 
 .chat-selection-bar[hidden] {
@@ -3788,16 +3727,22 @@ button {
 }
 
 .chat-selection-button {
-    padding: 6px 12px;
+    width: 32px;
+    height: 32px;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    padding: 0;
 
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius);
 
     background: var(--surface);
+    color: var(--text-muted);
 
-    color: var(--secondary);
-
-    font-size: 13px;
+    font-size: 15px;
     line-height: 1;
 
     cursor: pointer;
@@ -3814,9 +3759,19 @@ button {
     color: var(--text);
 }
 
-.chat-selection-cancel {
-    margin-left: auto;
+.chat-selection-button[hidden] {
+    display: none;
+}
 
+.chat-selection-delete {
+    color: var(--danger);
+}
+
+.chat-selection-delete:hover {
+    border-color: var(--danger);
+}
+
+.chat-selection-cancel {
     color: var(--text-muted);
 }
 

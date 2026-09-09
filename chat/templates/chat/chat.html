@@ -458,9 +458,11 @@
 
         </div>
 
-    </div>
+                </div>
 
-    {% endif %}
+                </div>
+
+            {% endif %}
 
     <!-- =========================
          Модальное окно добавления участника
@@ -1051,7 +1053,46 @@
             <!-- Пользовательское меню -->
             {% if user.is_authenticated %}
 
-                <div class="user-menu">
+                <div class="header-right">
+
+                    <div
+                        id="chat-selection-bar"
+                        class="chat-selection-bar"
+                        hidden
+                    >
+
+                        <span
+                            id="chat-selection-count"
+                            class="chat-selection-count"
+                        >0</span>
+
+                        <button
+                            type="button"
+                            id="chat-selection-copy"
+                            class="chat-selection-button"
+                        >📋</button>
+
+                        <button
+                            type="button"
+                            id="chat-selection-forward"
+                            class="chat-selection-button"
+                        >➡️</button>
+
+                        <button
+                            type="button"
+                            id="chat-selection-delete"
+                            class="chat-selection-button chat-selection-delete"
+                        >🗑️</button>
+
+                        <button
+                            type="button"
+                            id="chat-selection-cancel"
+                            class="chat-selection-button chat-selection-cancel"
+                        >✕</button>
+
+                    </div>
+
+                    <div class="user-menu">
 
                     <button
                         id="user-menu-button"
@@ -1161,43 +1202,6 @@
                     id="chat-upload-status"
                     class="chat-upload-status"
                 ></div>
-
-            </div>
-
-            <div
-                id="chat-selection-bar"
-                class="chat-selection-bar"
-                hidden
-            >
-
-                <span
-                    id="chat-selection-count"
-                    class="chat-selection-count"
-                >0</span>
-
-                <button
-                    type="button"
-                    id="chat-selection-select-all"
-                    class="chat-selection-button"
-                >
-                    Выбрать все
-                </button>
-
-                <button
-                    type="button"
-                    id="chat-selection-copy"
-                    class="chat-selection-button"
-                >
-                    Скопировать
-                </button>
-
-                <button
-                    type="button"
-                    id="chat-selection-cancel"
-                    class="chat-selection-button chat-selection-cancel"
-                >
-                    Отмена
-                </button>
 
             </div>
 
