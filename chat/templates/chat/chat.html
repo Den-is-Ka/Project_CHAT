@@ -272,6 +272,72 @@
 
 
     <!-- =========================
+         Модальное окно пересылки сообщения
+    ========================== -->
+
+    <div
+        id="forward-message-modal"
+        class="modal hidden"
+    >
+
+        <div class="modal-content">
+
+            <div class="modal-header">
+
+                <h2>Переслать сообщение</h2>
+
+                <p>
+                    Выберите комнату для пересылки
+                </p>
+
+            </div>
+
+            <form id="forward-message-form">
+
+                {% csrf_token %}
+
+                <div
+                    id="forward-message-error"
+                    class="form-error hidden"
+                ></div>
+
+                <div class="form-group">
+
+                    <label for="forward-target-room">
+                        Комната
+                    </label>
+
+                    <select
+                        id="forward-target-room"
+                        name="target_room_id"
+                        required
+                    ></select>
+
+                </div>
+
+                <button
+                    type="submit"
+                    class="primary-button"
+                >
+                    Переслать
+                </button>
+
+                <button
+                    type="button"
+                    class="modal-cancel-button"
+                    data-close-modal="forward-message-modal"
+                >
+                    Отмена
+                </button>
+
+            </form>
+
+        </div>
+
+    </div>
+
+
+    <!-- =========================
          Модальное окно редактирования комнаты
     ========================== -->
 
@@ -1098,6 +1164,43 @@
 
             </div>
 
+            <div
+                id="chat-selection-bar"
+                class="chat-selection-bar"
+                hidden
+            >
+
+                <span
+                    id="chat-selection-count"
+                    class="chat-selection-count"
+                >0</span>
+
+                <button
+                    type="button"
+                    id="chat-selection-select-all"
+                    class="chat-selection-button"
+                >
+                    Выбрать все
+                </button>
+
+                <button
+                    type="button"
+                    id="chat-selection-copy"
+                    class="chat-selection-button"
+                >
+                    Скопировать
+                </button>
+
+                <button
+                    type="button"
+                    id="chat-selection-cancel"
+                    class="chat-selection-button chat-selection-cancel"
+                >
+                    Отмена
+                </button>
+
+            </div>
+
             <div class="chat-input">
 
                 <button
@@ -1163,6 +1266,49 @@
                         placeholder="Введите сообщение..."
                         autocomplete="off"
                     >
+
+                </div>
+
+                <div
+                    id="chat-emoji-wrap"
+                    class="chat-emoji-wrap"
+                >
+
+                    <button
+                        type="button"
+                        id="chat-emoji-button"
+                        class="chat-input-button chat-emoji-button"
+                        title="Добавить смайлик"
+                        aria-label="Добавить смайлик"
+                        aria-expanded="false"
+                        aria-controls="chat-emoji-panel"
+                    >
+                        <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 24 24"
+                            width="20"
+                            height="20"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            aria-hidden="true"
+                        >
+                            <circle cx="12" cy="12" r="10" />
+                            <path d="M8 14s1.5 2 4 2 4-2 4-2" />
+                            <line x1="9" y1="9" x2="9.01" y2="9" />
+                            <line x1="15" y1="9" x2="15.01" y2="9" />
+                        </svg>
+                    </button>
+
+                    <div
+                        id="chat-emoji-panel"
+                        class="chat-emoji-panel"
+                        role="menu"
+                        aria-label="Смайлики"
+                        hidden
+                    ></div>
 
                 </div>
 
@@ -1334,6 +1480,29 @@
             directMessageUrl:
                 "{% url 'direct_message' %}",
 
+            editMessageUrlTemplate:
+                "{% url 'edit_message' message_id=0 %}",
+
+            deleteMessageUrlTemplate:
+                "{% url 'delete_message' message_id=0 %}",
+
+            forwardMessageUrlTemplate:
+                "{% url 'forward_message' message_id=0 %}",
+
+            forwardRooms: [
+                {% for r in rooms %}{% if r.id != room.id %}
+                    {
+                        id: {{ r.id }},
+                        name: "{{ r.display_name|escapejs }}"
+                    },
+                {% endif %}{% endfor %}
+                {% for r in contacts %}{% if r.id != room.id %}
+                    {
+                        id: {{ r.id }},
+                        name: "{{ r.display_name|escapejs }}"
+                    },
+                {% endif %}{% endfor %}
+            ],
 
 
         };

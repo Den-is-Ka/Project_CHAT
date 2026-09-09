@@ -362,6 +362,20 @@ function handleWebSocketMessage(event) {
             break;
 
 
+        case "message_updated":
+
+            updateMessage(data);
+
+            break;
+
+
+        case "message_deleted":
+
+            removeMessageElement(data.message_id);
+
+            break;
+
+
         default:
 
             console.warn(
@@ -2169,11 +2183,1616 @@ if (messageInput) {
 
 
 // ==================================================
+// Emoji (вставка смайликов в сообщение)
+// ==================================================
+
+const EMOJI_GROUPS = [
+    {
+        label: "Смайлы",
+        emojis: [
+            "😀", "😁", "😂", "🤣", "😊", "😇", "🙂", "😉",
+            "😍", "🥰", "😘", "😋", "😜", "🤪", "🤔", "🤗",
+            "😎", "🥳", "😏", "😒", "😔", "😴", "🥺", "😢",
+            "😭", "😅", "😳", "🙃", "🥱", "🤯", "😱", "😡",
+            "🤬", "😷", "🤒", "🤢", "🤮", "🥶", "🫠",
+        ],
+    },
+    {
+        label: "Жесты",
+        emojis: [
+            "👍", "👎", "👌", "✌️", "🤞", "🤟", "🤘", "🤙",
+            "👈", "👉", "👆", "👇", "☝️", "👋", "🤚", "✋",
+            "🖖", "👏", "🙌", "👐", "🤲", "🤝", "🙏", "💪",
+            "✊", "👊", "🤛", "🤜",
+        ],
+    },
+    {
+        label: "Сердца",
+        emojis: [
+            "❤️", "🧡", "💛", "💚", "💙", "💜", "🖤", "🤍",
+            "🤎", "💔", "❣️", "💕", "💞", "💓", "💗", "💖",
+            "💘", "💝", "💟",
+        ],
+    },
+    {
+        label: "Животные",
+        emojis: [
+            "🐶", "🐱", "🐭", "🐹", "🐰", "🦊", "🐻", "🐼",
+            "🐨", "🐯", "🦁", "🐮", "🐷", "🐸", "🐵", "🙈",
+            "🙉", "🙊", "🐔", "🐧", "🐦", "🦄", "🐝", "🐢",
+            "🐍", "🦋", "🐙", "🦀", "🐬", "🐳", "🐠", "🦈",
+        ],
+    },
+    {
+        label: "Еда и напитки",
+        emojis: [
+            "🍏", "🍎", "🍐", "🍊", "🍋", "🍌", "🍉", "🍇",
+            "🍓", "🍒", "🍑", "🥭", "🍍", "🥥", "🥝", "🍅",
+            "🥑", "🥦", "🌽", "🍞", "🧀", "🍗", "🍔", "🍟",
+            "🍕", "🌮", "🌯", "🥗", "🍿", "🧁", "🍰", "🍦",
+            "🍩", "🍪", "☕", "🍵", "🧃", "🍺", "🍻", "🥂",
+        ],
+    },
+    {
+        label: "Активности",
+        emojis: [
+            "⚽", "🏀", "🏈", "⚾", "🎾", "🏐", "🎱", "🏓",
+            "🏸", "🎯", "🎮", "🎲", "🧩", "🎨", "🎭", "🎬",
+            "🎵", "🎧", "🎤", "🎸", "🎹", "🥁", "🎺",
+        ],
+    },
+    {
+        label: "Путешествия",
+        emojis: [
+            "🚗", "🚕", "🚙", "🚌", "🏎️", "🚓", "🚑", "🚒",
+            "🚜", "🏍️", "🛴", "🚲", "✈️", "🚀", "🛸", "🚁",
+            "⛵", "🚤", "🛳️",
+        ],
+    },
+    {
+        label: "Предметы",
+        emojis: [
+            "📱", "💻", "🖥️", "🖨️", "📷", "🎥", "💡", "🔥",
+            "⭐", "🌟", "☀️", "🌙", "🌈", "⚡", "❄️", "💎",
+            "📚", "✏️", "✂️", "🔑", "🔔",
+        ],
+    },
+];
+
+
+const chatEmojiWrap =
+    document.getElementById(
+        "chat-emoji-wrap"
+    );
+
+
+const chatEmojiButton =
+    document.getElementById(
+        "chat-emoji-button"
+    );
+
+
+const chatEmojiPanel =
+    document.getElementById(
+        "chat-emoji-panel"
+    );
+
+
+let emojiPickerOpen = false;
+
+
+// Собираем панель смайликов из групп.
+function buildEmojiPicker() {
+
+    if (!chatEmojiPanel) {
+        return;
+    }
+
+    const fragment =
+        document.createDocumentFragment();
+
+    for (const group of EMOJI_GROUPS) {
+
+        const groupEl =
+            document.createElement("div");
+
+        groupEl.className =
+            "chat-emoji-group";
+
+        const titleEl =
+            document.createElement("div");
+
+        titleEl.className =
+            "chat-emoji-group-title";
+
+        titleEl.textContent =
+            group.label;
+
+        groupEl.appendChild(
+            titleEl
+        );
+
+        const gridEl =
+            document.createElement("div");
+
+        gridEl.className =
+            "chat-emoji-grid";
+
+        for (const emoji of group.emojis) {
+
+            const itemEl =
+                document.createElement("button");
+
+            itemEl.type = "button";
+
+            itemEl.className =
+                "chat-emoji-item";
+
+            itemEl.textContent =
+                emoji;
+
+            itemEl.title =
+                emoji;
+
+            itemEl.addEventListener(
+                "click",
+                function () {
+                    insertEmoji(emoji);
+                }
+            );
+
+            gridEl.appendChild(
+                itemEl
+            );
+        }
+
+        groupEl.appendChild(
+            gridEl
+        );
+
+        fragment.appendChild(
+            groupEl
+        );
+    }
+
+    chatEmojiPanel.appendChild(
+        fragment
+    );
+}
+
+
+function setEmojiPickerOpen(open) {
+
+    emojiPickerOpen = open;
+
+    if (chatEmojiPanel) {
+        chatEmojiPanel.hidden =
+            !open;
+    }
+
+    if (chatEmojiButton) {
+        chatEmojiButton.classList.toggle(
+            "active",
+            open
+        );
+
+        chatEmojiButton.setAttribute(
+            "aria-expanded",
+            open ? "true" : "false"
+        );
+    }
+}
+
+
+// Вставляет выбранный смайлик в место курсора.
+function insertEmoji(emoji) {
+
+    if (!messageInput) {
+        return;
+    }
+
+    const start =
+        messageInput.selectionStart ?? messageInput.value.length;
+
+    const end =
+        messageInput.selectionEnd ?? start;
+
+    const value =
+        messageInput.value;
+
+    messageInput.value =
+        value.slice(0, start) +
+        emoji +
+        value.slice(end);
+
+    const caret =
+        start + emoji.length;
+
+    messageInput.setSelectionRange(
+        caret,
+        caret
+    );
+
+    messageInput.focus();
+
+    // Обновляем кнопки («микрофон»/«отправить»).
+    messageInput.dispatchEvent(
+        new Event("input")
+    );
+}
+
+
+if (chatEmojiButton) {
+
+    chatEmojiButton.addEventListener(
+        "click",
+        function (event) {
+
+            event.stopPropagation();
+
+            setEmojiPickerOpen(
+                !emojiPickerOpen
+            );
+        }
+    );
+}
+
+
+// Закрываем панель по клику вне её.
+document.addEventListener(
+    "click",
+    function (event) {
+
+        if (
+            emojiPickerOpen
+            &&
+            chatEmojiWrap
+            &&
+            !chatEmojiWrap.contains(
+                event.target
+            )
+        ) {
+            setEmojiPickerOpen(false);
+        }
+    }
+);
+
+
+// Закрываем панель по Escape.
+document.addEventListener(
+    "keydown",
+    function (event) {
+
+        if (
+            event.key === "Escape"
+            &&
+            emojiPickerOpen
+        ) {
+            setEmojiPickerOpen(false);
+        }
+    }
+);
+
+
+buildEmojiPicker();
+
+
+// ==================================================
+// Message actions (контекстное меню сообщения)
+// ==================================================
+
+const chatSelectionBar =
+    document.getElementById(
+        "chat-selection-bar"
+    );
+
+
+const chatSelectionCount =
+    document.getElementById(
+        "chat-selection-count"
+    );
+
+
+const chatSelectionSelectAll =
+    document.getElementById(
+        "chat-selection-select-all"
+    );
+
+
+const chatSelectionCopy =
+    document.getElementById(
+        "chat-selection-copy"
+    );
+
+
+const chatSelectionCancel =
+    document.getElementById(
+        "chat-selection-cancel"
+    );
+
+
+let contextMenu = null;
+let contextMenuTarget = null;
+let contextMenuData = null;
+
+let selectionMode = false;
+let selectedMessageIds = new Set();
+
+let forwardMessageId = null;
+
+
+const contextMenuItems = [
+    {
+        id: "edit",
+        icon: "✏️",
+        label: "Редактировать",
+        title: "Редактировать сообщение",
+        show: function (data) {
+            return (
+                data.username === chatConfig.username
+            );
+        },
+        handler: startEditMessage,
+    },
+    {
+        id: "copy",
+        icon: "📋",
+        label: "Копировать",
+        title: "Копировать сообщение",
+        show: function () {
+            return true;
+        },
+        handler: copyMessage,
+    },
+    {
+        id: "forward",
+        icon: "➡️",
+        label: "Переслать",
+        title: "Переслать в другую комнату",
+        show: function () {
+            return (
+                Array.isArray(chatConfig.forwardRooms)
+                &&
+                chatConfig.forwardRooms.length > 0
+            );
+        },
+        handler: openForwardModal,
+    },
+    {
+        id: "delete",
+        icon: "🗑️",
+        label: "Удалить",
+        title: "Удалить сообщение",
+        show: function (data) {
+            return (
+                data.username === chatConfig.username
+                ||
+                chatConfig.isRoomOwner
+            );
+        },
+        handler: deleteMessage,
+    },
+    {
+        id: "select",
+        icon: "✅",
+        label: "Выбрать",
+        title: "Режим выбора сообщений",
+        show: function () {
+            return true;
+        },
+        handler: function () {
+            const messageId =
+                contextMenuData
+                    ? contextMenuData.id
+                    : null;
+
+            enterSelectionMode();
+
+            if (messageId) {
+                setMessageSelected(
+                    messageId,
+                    findMessageElement(messageId),
+                    true
+                );
+            }
+        },
+    },
+];
+
+
+// Строим единое контекстное меню (одно на весь чат,
+// позиционируется у курсора).
+function createContextMenu() {
+
+    if (
+        contextMenu
+        ||
+        !document.body
+    ) {
+        return;
+    }
+
+    contextMenu =
+        document.createElement("div");
+
+    contextMenu.className =
+        "message-context-menu";
+
+    contextMenu.hidden = true;
+
+    contextMenu.setAttribute(
+        "role",
+        "menu"
+    );
+
+    document.body.appendChild(
+        contextMenu
+    );
+}
+
+
+// Наполняем меню доступными для этого сообщения пунктами.
+function buildContextMenu() {
+
+    if (!contextMenu) {
+        return;
+    }
+
+    contextMenu.innerHTML = "";
+
+    for (const item of contextMenuItems) {
+
+        if (
+            contextMenuData
+            &&
+            !item.show(contextMenuData)
+        ) {
+            continue;
+        }
+
+        const button =
+            document.createElement("button");
+
+        button.type = "button";
+
+        button.className =
+            "context-menu-btn";
+
+        button.dataset.actionId =
+            item.id;
+
+        button.title =
+            item.title;
+
+        const icon =
+            document.createElement("span");
+
+        icon.className =
+            "context-menu-icon";
+
+        icon.textContent =
+            item.icon;
+
+        const label =
+            document.createElement("span");
+
+        label.textContent =
+            item.label;
+
+        button.appendChild(icon);
+        button.appendChild(label);
+
+        button.addEventListener(
+            "click",
+            item.handler
+        );
+
+        contextMenu.appendChild(
+            button
+        );
+    }
+}
+
+
+function openContextMenu(event, messageElement) {
+
+    closeContextMenu();
+
+    createContextMenu();
+
+    const data =
+        messageElement.__messageData;
+
+    if (!contextMenu || !data) {
+        return;
+    }
+
+    contextMenuTarget = messageElement;
+    contextMenuData = data;
+
+    buildContextMenu();
+
+    if (
+        !contextMenu.querySelector(
+            ".context-menu-btn"
+        )
+    ) {
+        return;
+    }
+
+    const menuWidth =
+        contextMenu.offsetWidth;
+
+    const menuHeight =
+        contextMenu.offsetHeight;
+
+    const margin = 8;
+
+    let left = event.clientX;
+    let top = event.clientY;
+
+    if (left + menuWidth > window.innerWidth - margin) {
+        left = window.innerWidth - menuWidth - margin;
+    }
+
+    if (top + menuHeight > window.innerHeight - margin) {
+        top = window.innerHeight - menuHeight - margin;
+    }
+
+    if (left < margin) {
+        left = margin;
+    }
+
+    if (top < margin) {
+        top = margin;
+    }
+
+    contextMenu.style.left =
+        left + "px";
+
+    contextMenu.style.top =
+        top + "px";
+
+    contextMenu.hidden = false;
+}
+
+
+function closeContextMenu() {
+
+    if (contextMenu) {
+        contextMenu.hidden = true;
+    }
+
+    contextMenuTarget = null;
+    contextMenuData = null;
+}
+
+
+if (chatLog) {
+
+    chatLog.addEventListener(
+        "contextmenu",
+        function (event) {
+
+            const content =
+                event.target.closest(
+                    ".message-content"
+                );
+
+            if (!content) {
+                return;
+            }
+
+            const messageElement =
+                content.closest(".message");
+
+            if (!messageElement) {
+                return;
+            }
+
+            // Не мешаем системному меню на ссылках/кнопках.
+            if (
+                event.target.closest(
+                    "a,button,input,textarea"
+                )
+            ) {
+                return;
+            }
+
+            event.preventDefault();
+
+            openContextMenu(
+                event,
+                messageElement
+            );
+        }
+    );
+}
+
+
+document.addEventListener(
+    "click",
+    closeContextMenu
+);
+
+
+if (chatLog) {
+    chatLog.addEventListener(
+        "scroll",
+        closeContextMenu
+    );
+}
+
+
+window.addEventListener(
+    "resize",
+    closeContextMenu
+);
+
+
+document.addEventListener(
+    "keydown",
+    function (event) {
+
+        if (event.key !== "Escape") {
+            return;
+        }
+
+        if (selectionMode) {
+            exitSelectionMode();
+        }
+
+        closeContextMenu();
+    }
+);
+
+
+function copyTextToClipboard(text) {
+
+    if (
+        navigator.clipboard
+        &&
+        window.isSecureContext
+    ) {
+        return navigator.clipboard.writeText(text);
+    }
+
+    return new Promise(
+        function (resolve, reject) {
+
+            const textarea =
+                document.createElement("textarea");
+
+            textarea.value = text;
+
+            textarea.setAttribute(
+                "readonly",
+                ""
+            );
+
+            textarea.style.position =
+                "fixed";
+
+            textarea.style.opacity =
+                "0";
+
+            document.body.appendChild(
+                textarea
+            );
+
+            textarea.select();
+
+            try {
+                document.execCommand("copy");
+                resolve();
+            }
+            catch (error) {
+                reject(error);
+            }
+            finally {
+                document.body.removeChild(
+                    textarea
+                );
+            }
+        }
+    );
+}
+
+
+async function copyMessage() {
+
+    const data = contextMenuData;
+
+    closeContextMenu();
+
+    if (!data) {
+        return;
+    }
+
+    let text = data.message || "";
+
+    if (!text && data.attachment) {
+        text = data.attachment;
+    }
+
+    if (!text) {
+        return;
+    }
+
+    try {
+        await copyTextToClipboard(text);
+        showToast(
+            "Скопировано.",
+            "ok"
+        );
+    }
+    catch (error) {
+        showToast(
+            "Не удалось скопировать.",
+            "error"
+        );
+    }
+}
+
+
+// Редактирование: заменяем текст сообщения на inline-поле.
+function startEditMessage() {
+
+    const messageId =
+        contextMenuData
+            ? contextMenuData.id
+            : null;
+
+    closeContextMenu();
+
+    const messageElement =
+        findMessageElement(messageId);
+
+    if (
+        !messageElement
+        ||
+        messageElement.querySelector(
+            ".message-edit-wrap"
+        )
+    ) {
+        return;
+    }
+
+    const data =
+        messageElement.__messageData;
+
+    const textDiv =
+        messageElement.querySelector(
+            ".text"
+        );
+
+    const wrap =
+        document.createElement("div");
+
+    wrap.className =
+        "message-edit-wrap";
+
+    const input =
+        document.createElement("input");
+
+    input.type = "text";
+
+    input.className =
+        "message-edit-input";
+
+    input.value = data.message || "";
+
+    input.maxLength = 1000;
+
+    const actions =
+        document.createElement("div");
+
+    actions.className =
+        "message-edit-actions";
+
+    const saveButton =
+        document.createElement("button");
+
+    saveButton.type = "button";
+
+    saveButton.className =
+        "message-edit-save";
+
+    saveButton.textContent =
+        "Сохранить";
+
+    const cancelButton =
+        document.createElement("button");
+
+    cancelButton.type = "button";
+
+    cancelButton.className =
+        "message-edit-cancel";
+
+    cancelButton.textContent =
+        "Отмена";
+
+    actions.appendChild(saveButton);
+    actions.appendChild(cancelButton);
+
+    wrap.appendChild(input);
+    wrap.appendChild(actions);
+
+    if (textDiv) {
+        textDiv.style.display = "none";
+
+        textDiv.parentNode.insertBefore(
+            wrap,
+            textDiv
+        );
+    }
+    else {
+        const content =
+            messageElement.querySelector(
+                ".message-content"
+            );
+
+        if (content) {
+            content.appendChild(wrap);
+        }
+    }
+
+    messageElement.classList.add(
+        "editing"
+    );
+
+    const finishEdit = function () {
+
+        messageElement.classList.remove(
+            "editing"
+        );
+
+        wrap.remove();
+
+        if (textDiv) {
+            textDiv.style.display = "";
+        }
+    };
+
+    cancelButton.addEventListener(
+        "click",
+        finishEdit
+    );
+
+    saveButton.addEventListener(
+        "click",
+        async function () {
+
+            await saveEditedMessage(
+                messageId,
+                input.value
+            );
+
+            finishEdit();
+        }
+    );
+
+    input.addEventListener(
+        "keydown",
+        async function (event) {
+
+            if (
+                event.key === "Enter"
+                &&
+                !event.shiftKey
+            ) {
+                event.preventDefault();
+
+                await saveEditedMessage(
+                    messageId,
+                    input.value
+                );
+
+                finishEdit();
+            }
+            else if (event.key === "Escape") {
+                finishEdit();
+            }
+        }
+    );
+
+    input.focus();
+    input.select();
+}
+
+
+async function saveEditedMessage(messageId, rawText) {
+
+    const text =
+        (rawText || "").trim();
+
+    if (!text) {
+        showToast(
+            "Сообщение не может быть пустым.",
+            "error"
+        );
+
+        return;
+    }
+
+    const url =
+        chatConfig.editMessageUrlTemplate.replace(
+            "0",
+            String(messageId)
+        );
+
+    try {
+
+        const response =
+            await apiRequest(
+                url,
+                {
+                    method: "POST",
+                    body: new URLSearchParams({
+                        text: text,
+                    }),
+                }
+            );
+
+        const data =
+            await response.json();
+
+        if (
+            data.success
+            &&
+            data.message
+        ) {
+            updateMessage(data.message);
+        }
+        else {
+            showToast(
+                data.error
+                ||
+                "Не удалось изменить сообщение.",
+                "error"
+            );
+        }
+    }
+    catch (error) {
+        showToast(
+            "Не удалось изменить сообщение.",
+            "error"
+        );
+    }
+}
+
+
+// Обновляет содержимое уже отрисованного сообщения
+// (в ответ на message_updated по WebSocket или ответ сервера).
+function updateMessage(data) {
+
+    const messageElement =
+        findMessageElement(data.id);
+
+    if (!messageElement) {
+        return;
+    }
+
+    // Закрываем inline-редактирование, если оно открыто.
+    const editWrap =
+        messageElement.querySelector(
+            ".message-edit-wrap"
+        );
+
+    if (editWrap) {
+        editWrap.remove();
+    }
+
+    messageElement.classList.remove(
+        "editing"
+    );
+
+    const oldText =
+        messageElement.querySelector(
+            ".text"
+        );
+
+    if (oldText) {
+        oldText.style.display = "";
+        oldText.textContent = data.message || "";
+    }
+    else if (data.message) {
+
+        const text =
+            document.createElement("div");
+
+        text.classList.add("text");
+
+        text.textContent = data.message;
+
+        const content =
+            messageElement.querySelector(
+                ".message-content"
+            );
+
+        if (content) {
+            content.insertBefore(
+                text,
+                messageElement.querySelector(
+                    ".reactions-bar"
+                )
+            );
+        }
+    }
+
+    // Маркер «изменено».
+    let editedMark =
+        messageElement.querySelector(
+            ".message-edited"
+        );
+
+    if (data.edited_at) {
+
+        if (!editedMark) {
+
+            editedMark =
+                document.createElement("span");
+
+            editedMark.className =
+                "message-edited";
+
+            editedMark.textContent =
+                "изменено";
+
+            const textEl =
+                messageElement.querySelector(
+                    ".text"
+                )
+                ||
+                messageElement.querySelector(
+                    ".message-edit-wrap"
+                );
+
+            if (
+                textEl
+                &&
+                textEl.parentNode
+            ) {
+                textEl.parentNode.insertBefore(
+                    editedMark,
+                    textEl.nextSibling
+                );
+            }
+        }
+    }
+    else if (editedMark) {
+        editedMark.remove();
+    }
+
+    messageElement.__messageData =
+        data;
+}
+
+
+function removeMessageElement(messageId) {
+
+    const messageElement =
+        findMessageElement(messageId);
+
+    if (messageElement) {
+        messageElement.remove();
+    }
+
+    if (selectedMessageIds.has(messageId)) {
+        selectedMessageIds.delete(messageId);
+        updateSelectionCount();
+    }
+}
+
+
+function deleteMessage() {
+
+    const messageId =
+        contextMenuData
+            ? contextMenuData.id
+            : null;
+
+    closeContextMenu();
+
+    if (
+        !messageId
+        ||
+        !window.confirm(
+            "Удалить это сообщение?"
+        )
+    ) {
+        return;
+    }
+
+    const url =
+        chatConfig.deleteMessageUrlTemplate.replace(
+            "0",
+            String(messageId)
+        );
+
+    apiRequest(
+        url,
+        { method: "POST" }
+    )
+        .then(
+            async function (response) {
+
+                const data =
+                    await response.json();
+
+                if (data.success) {
+                    removeMessageElement(messageId);
+                    showToast(
+                        "Сообщение удалено.",
+                        "ok"
+                    );
+                }
+                else {
+                    showToast(
+                        data.error
+                        ||
+                        "Не удалось удалить сообщение.",
+                        "error"
+                    );
+                }
+            }
+        )
+        .catch(
+            function () {
+                showToast(
+                    "Не удалось удалить сообщение.",
+                    "error"
+                );
+            }
+        );
+}
+
+
+// Пересылка сообщения в другую комнату.
+function openForwardModal() {
+
+    const modal =
+        document.getElementById(
+            "forward-message-modal"
+        );
+
+    const select =
+        document.getElementById(
+            "forward-target-room"
+        );
+
+    const errorEl =
+        document.getElementById(
+            "forward-message-error"
+        );
+
+    forwardMessageId =
+        contextMenuData
+            ? contextMenuData.id
+            : null;
+
+    closeContextMenu();
+
+    if (!modal || !select) {
+        return;
+    }
+
+    const rooms =
+        chatConfig.forwardRooms || [];
+
+    if (!rooms.length) {
+        showToast(
+            "Нет комнат для пересылки.",
+            "error"
+        );
+
+        return;
+    }
+
+    select.innerHTML = "";
+
+    for (const room of rooms) {
+
+        const option =
+            document.createElement("option");
+
+        option.value =
+            String(room.id);
+
+        option.textContent =
+            room.name;
+
+        select.appendChild(
+            option
+        );
+    }
+
+    if (errorEl) {
+        errorEl.classList.add("hidden");
+    }
+
+    openModal(modal);
+}
+
+
+const forwardMessageForm =
+    document.getElementById(
+        "forward-message-form"
+    );
+
+
+if (forwardMessageForm) {
+
+    forwardMessageForm.addEventListener(
+        "submit",
+        async function (event) {
+
+            event.preventDefault();
+
+            const select =
+                document.getElementById(
+                    "forward-target-room"
+                );
+
+            const errorEl =
+                document.getElementById(
+                    "forward-message-error"
+                );
+
+            const targetRoomId =
+                select
+                    ? select.value
+                    : "";
+
+            if (!targetRoomId) {
+
+                if (errorEl) {
+                    errorEl.textContent =
+                        "Выберите комнату.";
+
+                    errorEl.classList.remove(
+                        "hidden"
+                    );
+                }
+
+                return;
+            }
+
+            const url =
+                chatConfig.forwardMessageUrlTemplate.replace(
+                    "0",
+                    String(forwardMessageId)
+                );
+
+            try {
+
+                const response =
+                    await apiRequest(
+                        url,
+                        {
+                            method: "POST",
+                            body: new URLSearchParams({
+                                target_room_id: targetRoomId,
+                            }),
+                        }
+                    );
+
+                const data =
+                    await response.json();
+
+                if (data.success) {
+
+                    closeModal(
+                        document.getElementById(
+                            "forward-message-modal"
+                        )
+                    );
+
+                    showToast(
+                        "Сообщение переслано.",
+                        "ok"
+                    );
+                }
+                else {
+
+                    const message =
+                        data.error
+                        ||
+                        "Не удалось переслать сообщение.";
+
+                    if (errorEl) {
+                        errorEl.textContent =
+                            message;
+
+                        errorEl.classList.remove(
+                            "hidden"
+                        );
+                    }
+                    else {
+                        showToast(
+                            message,
+                            "error"
+                        );
+                    }
+                }
+            }
+            catch (error) {
+
+                if (errorEl) {
+                    errorEl.textContent =
+                        "Не удалось переслать сообщение.";
+
+                    errorEl.classList.remove(
+                        "hidden"
+                    );
+                }
+            }
+        }
+    );
+}
+
+
+// Режим выбора сообщений.
+function enterSelectionMode() {
+
+    selectionMode = true;
+
+    selectedMessageIds = new Set();
+
+    if (chatLog) {
+        chatLog.classList.add(
+            "selection-mode"
+        );
+    }
+
+    if (chatSelectionBar) {
+        chatSelectionBar.hidden = false;
+    }
+
+    updateSelectionCount();
+
+    closeContextMenu();
+}
+
+
+function exitSelectionMode() {
+
+    selectionMode = false;
+
+    selectedMessageIds = new Set();
+
+    if (chatLog) {
+        chatLog.classList.remove(
+            "selection-mode"
+        );
+
+        chatLog
+            .querySelectorAll(
+                ".message.selected"
+            )
+            .forEach(
+                function (element) {
+                    element.classList.remove(
+                        "selected"
+                    );
+                }
+            );
+    }
+
+    if (chatSelectionBar) {
+        chatSelectionBar.hidden = true;
+    }
+
+    updateSelectionCount();
+}
+
+
+function isMessageSelected(messageId) {
+    return selectedMessageIds.has(messageId);
+}
+
+
+function setMessageSelected(messageId, messageElement, selected) {
+
+    if (selected) {
+        selectedMessageIds.add(messageId);
+    }
+    else {
+        selectedMessageIds.delete(messageId);
+    }
+
+    if (messageElement) {
+        messageElement.classList.toggle(
+            "selected",
+            selected
+        );
+    }
+
+    updateSelectionCount();
+}
+
+
+function toggleMessageSelection(messageId, messageElement) {
+
+    setMessageSelected(
+        messageId,
+        messageElement,
+        !isMessageSelected(messageId)
+    );
+}
+
+
+function updateSelectionCount() {
+
+    if (chatSelectionCount) {
+        chatSelectionCount.textContent =
+            String(selectedMessageIds.size);
+    }
+
+    if (chatSelectionBar) {
+        chatSelectionBar.hidden =
+            !selectionMode;
+    }
+}
+
+
+if (chatLog) {
+
+    chatLog.addEventListener(
+        "click",
+        function (event) {
+
+            if (!selectionMode) {
+                return;
+            }
+
+            const content =
+                event.target.closest(
+                    ".message-content"
+                );
+
+            if (!content) {
+                return;
+            }
+
+            if (
+                event.target.closest(
+                    "a,button,input,textarea"
+                )
+            ) {
+                return;
+            }
+
+            const messageElement =
+                content.closest(".message");
+
+            if (!messageElement) {
+                return;
+            }
+
+            toggleMessageSelection(
+                messageElement.dataset.messageId,
+                messageElement
+            );
+        }
+    );
+}
+
+
+if (chatSelectionSelectAll) {
+
+    chatSelectionSelectAll.addEventListener(
+        "click",
+        function () {
+
+            if (!chatLog) {
+                return;
+            }
+
+            const elements =
+                Array.from(
+                    chatLog.querySelectorAll(
+                        ".message"
+                    )
+                );
+
+            const allSelected =
+                elements.length > 0
+                &&
+                elements.every(
+                    function (element) {
+                        return selectedMessageIds.has(
+                            element.dataset.messageId
+                        );
+                    }
+                );
+
+            elements.forEach(
+                function (element) {
+                    setMessageSelected(
+                        element.dataset.messageId,
+                        element,
+                        !allSelected
+                    );
+                }
+            );
+        }
+    );
+}
+
+
+if (chatSelectionCopy) {
+
+    chatSelectionCopy.addEventListener(
+        "click",
+        async function () {
+
+            const texts = [];
+
+            selectedMessageIds.forEach(
+                function (messageId) {
+
+                    const messageElement =
+                        findMessageElement(messageId);
+
+                    const data =
+                        messageElement
+                            ? messageElement.__messageData
+                            : null;
+
+                    if (data && data.message) {
+                        texts.push(
+                            data.username + ": " + data.message
+                        );
+                    }
+                }
+            );
+
+            if (!texts.length) {
+                showToast(
+                    "Нет текстовых сообщений для копирования.",
+                    "error"
+                );
+
+                return;
+            }
+
+            try {
+                await copyTextToClipboard(
+                    texts.join("\n")
+                );
+
+                showToast(
+                    "Скопировано.",
+                    "ok"
+                );
+            }
+            catch (error) {
+                showToast(
+                    "Не удалось скопировать.",
+                    "error"
+                );
+            }
+        }
+    );
+}
+
+
+if (chatSelectionCancel) {
+
+    chatSelectionCancel.addEventListener(
+        "click",
+        exitSelectionMode
+    );
+}
+
+
+// ==================================================
 // Voice messages (запись голосовых сообщений)
 // ==================================================
 
 const RECORD_HOLD_MS =
-    3000;
+    1500;
 
 const MAX_RECORD_MS =
     5 * 60 * 1000;

@@ -2119,6 +2119,127 @@ button {
 }
 
 
+/* Панель выбора смайликов */
+.chat-emoji-wrap {
+    position: relative;
+}
+
+.chat-emoji-button {
+    background: transparent;
+
+    color: var(--text-muted);
+}
+
+.chat-emoji-button:hover:not(:disabled) {
+    background: var(--primary-light);
+
+    color: var(--primary);
+}
+
+.chat-emoji-button.active {
+    background: var(--primary-light);
+
+    color: var(--primary);
+}
+
+.chat-emoji-panel {
+    position: absolute;
+
+    right: 0;
+    bottom: calc(100% + 10px);
+
+    z-index: 1000;
+
+    width: 300px;
+    max-height: 280px;
+
+    overflow-y: auto;
+    overflow-x: hidden;
+
+    padding: 8px 6px 10px;
+
+    border: 1px solid var(--border);
+
+    background: var(--surface);
+
+    box-shadow: var(--shadow-lg);
+}
+
+.chat-emoji-panel[hidden] {
+    display: none;
+}
+
+/* Тонкий и малозаметный скролл панели смайликов. */
+.chat-emoji-panel::-webkit-scrollbar {
+    width: 4px;
+}
+
+.chat-emoji-panel::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.chat-emoji-panel::-webkit-scrollbar-thumb {
+    background: rgba(60, 53, 79, 0.6);
+
+    border-radius: 999px;
+}
+
+.chat-emoji-panel::-webkit-scrollbar-thumb:hover {
+    background: var(--text-muted);
+}
+
+.chat-emoji-group-title {
+    padding: 4px 8px;
+
+    color: var(--text-muted);
+
+    font-size: 11px;
+    font-weight: 600;
+
+    text-transform: uppercase;
+
+    letter-spacing: 0.04em;
+}
+
+.chat-emoji-grid {
+    display: grid;
+
+    grid-template-columns: repeat(8, 34px);
+
+    gap: 2px;
+
+    padding: 2px 4px 8px;
+}
+
+.chat-emoji-item {
+    width: 34px;
+    height: 34px;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    padding: 0;
+
+    border: none;
+
+    border-radius: 4px;
+
+    background: transparent;
+
+    font-size: 20px;
+    line-height: 1;
+
+    cursor: pointer;
+
+    transition: background 0.12s ease;
+}
+
+.chat-emoji-item:hover {
+    background: var(--primary-light);
+}
+
+
 /* Кнопка переключения отправки/записи должна прятаться
    через hidden-атрибут (иначе display:flex его перебивает). */
 .chat-input-button[hidden] {
@@ -3527,4 +3648,268 @@ button {
 
         font-size: 13px;
     }
+}
+
+
+/* =========================
+   Message context menu
+========================= */
+
+.message-context-menu {
+    position: fixed;
+
+    z-index: 2000;
+
+    display: flex;
+    flex-direction: column;
+
+    min-width: 200px;
+
+    padding: 6px;
+
+    border: 1px solid var(--border);
+
+    border-radius: 12px;
+
+    background: var(--surface);
+
+    box-shadow: var(--shadow-lg);
+
+    animation: fadeIn 0.12s ease-out;
+}
+
+.message-context-menu[hidden] {
+    display: none;
+}
+
+.context-menu-btn {
+    display: inline-flex;
+    align-items: center;
+
+    gap: 10px;
+
+    padding: 9px 12px;
+
+    border: none;
+    border-radius: 8px;
+
+    background: transparent;
+
+    color: var(--text);
+
+    font-size: 14px;
+    line-height: 1;
+
+    text-align: left;
+
+    cursor: pointer;
+
+    white-space: nowrap;
+
+    transition:
+        background 0.15s ease,
+        color 0.15s ease;
+}
+
+.context-menu-btn:hover {
+    background: var(--primary-light);
+}
+
+.context-menu-btn[data-action-id="delete"] {
+    color: var(--danger);
+}
+
+.context-menu-icon {
+    width: 18px;
+
+    font-size: 15px;
+    line-height: 1;
+
+    text-align: center;
+
+    flex-shrink: 0;
+}
+
+
+/* =========================
+   Selection mode
+========================= */
+
+.chat-log.selection-mode .message {
+    cursor: pointer;
+
+    user-select: none;
+}
+
+.chat-log.selection-mode .message-content {
+    pointer-events: none;
+}
+
+.message.selected {
+    background: var(--primary-light);
+}
+
+.chat-log.selection-mode .message .message-hover-menu {
+    display: none;
+}
+
+.chat-selection-bar {
+    display: flex;
+    align-items: center;
+
+    gap: 10px;
+
+    padding: 8px 12px;
+
+    border-top: 1px solid var(--border);
+
+    background: var(--panel);
+}
+
+.chat-selection-bar[hidden] {
+    display: none;
+}
+
+.chat-selection-count {
+    min-width: 28px;
+
+    padding: 2px 8px;
+
+    border-radius: 999px;
+
+    background: var(--primary-light);
+
+    color: var(--primary);
+
+    font-size: 13px;
+    font-weight: 600;
+
+    text-align: center;
+}
+
+.chat-selection-button {
+    padding: 6px 12px;
+
+    border: 1px solid var(--border);
+    border-radius: 8px;
+
+    background: var(--surface);
+
+    color: var(--secondary);
+
+    font-size: 13px;
+    line-height: 1;
+
+    cursor: pointer;
+
+    transition:
+        background 0.15s ease,
+        border-color 0.15s ease,
+        color 0.15s ease;
+}
+
+.chat-selection-button:hover {
+    border-color: var(--primary);
+
+    color: var(--text);
+}
+
+.chat-selection-cancel {
+    margin-left: auto;
+
+    color: var(--text-muted);
+}
+
+.chat-selection-cancel:hover {
+    border-color: var(--border);
+
+    color: var(--danger);
+}
+
+
+/* =========================
+   Message edited marker
+========================= */
+
+.message-edited {
+    color: var(--muted);
+
+    font-size: 11px;
+    line-height: 1;
+
+    white-space: nowrap;
+}
+
+
+/* =========================
+   Inline message edit
+========================= */
+
+.message-edit-wrap {
+    display: flex;
+    flex-direction: column;
+
+    gap: 8px;
+}
+
+.message-edit-input {
+    width: 100%;
+
+    padding: 7px 10px;
+
+    border: 1px solid var(--primary);
+    border-radius: 8px;
+
+    background: var(--panel);
+
+    color: var(--text);
+
+    font-family: var(--font-family);
+    font-size: 14px;
+    line-height: 1.4;
+
+    outline: none;
+}
+
+.message-edit-actions {
+    display: flex;
+
+    gap: 8px;
+}
+
+.message-edit-save,
+.message-edit-cancel {
+    padding: 5px 12px;
+
+    border: none;
+    border-radius: 8px;
+
+    font-size: 13px;
+    line-height: 1;
+
+    cursor: pointer;
+
+    transition:
+        background 0.15s ease,
+        color 0.15s ease;
+}
+
+.message-edit-save {
+    background: var(--primary);
+
+    color: var(--on-primary);
+}
+
+.message-edit-save:hover {
+    background: var(--primary-hover);
+}
+
+.message-edit-cancel {
+    background: var(--surface);
+
+    color: var(--text-muted);
+}
+
+.message-edit-cancel:hover {
+    color: var(--text);
 }
