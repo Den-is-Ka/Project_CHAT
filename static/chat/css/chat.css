@@ -3404,6 +3404,7 @@ button {
         max-width: none;
 
         height: 100vh;
+        height: 100dvh;
 
         margin: 0;
 
@@ -3494,11 +3495,15 @@ button {
     }
 
     .online-users {
-        padding: 12px 16px;
+        padding: 12px 14px;
+    }
+
+    .online-header {
+        gap: 8px;
     }
 
     .room-title-name {
-        max-width: 180px;
+        max-width: 160px;
     }
 
     .room-menu-dropdown {
@@ -3515,7 +3520,11 @@ button {
     }
 
     .chat-input {
-        padding: 12px 16px;
+        padding:
+            calc(12px + env(safe-area-inset-top, 0px))
+            calc(16px + env(safe-area-inset-right, 0px))
+            calc(12px + env(safe-area-inset-bottom, 0px))
+            calc(16px + env(safe-area-inset-left, 0px));
 
         gap: 8px;
     }
@@ -3548,8 +3557,73 @@ button {
         min-width: 190px;
     }
 
+    .online-users {
+        padding: 10px 10px;
+    }
+
+    .room-title-button {
+        gap: 6px;
+    }
+
+    .room-title-avatar {
+        width: 26px;
+        height: 26px;
+
+        min-width: 26px;
+
+        font-size: 11px;
+    }
+
     .room-title-name {
-        max-width: 140px;
+        max-width: 110px;
+
+        font-size: 14px;
+    }
+
+    .chat-title > span {
+        font-size: 11px;
+    }
+
+    .header-right {
+        gap: 4px;
+    }
+
+    .user-menu-button {
+        width: 34px;
+        min-width: 34px;
+        height: 34px;
+    }
+
+    .chat-selection-count {
+        min-width: 22px;
+
+        padding: 2px 6px;
+
+        font-size: 12px;
+    }
+
+    .chat-selection-button {
+        width: 28px;
+        min-width: 28px;
+        height: 28px;
+    }
+
+    .chat-selection-button svg {
+        width: 16px;
+        height: 16px;
+    }
+
+    .chat-emoji-panel {
+        width: 300px;
+        max-width: calc(100vw - 24px);
+    }
+
+    .room-menu-dropdown {
+        left: auto;
+        right: 12px;
+
+        width: 340px;
+        max-width: calc(100vw - 24px);
     }
 
     .message-content {
@@ -3596,6 +3670,43 @@ button {
         bottom: 120px;
 
         font-size: 13px;
+    }
+}
+
+
+/* =========================
+   Small phones
+========================= */
+
+@media (max-width: 400px) {
+
+    .rooms-sidebar:not(.collapsed) {
+        width: 160px;
+        min-width: 160px;
+    }
+
+    .room-title-name {
+        max-width: 84px;
+    }
+
+    .room-title-arrow {
+        display: none;
+    }
+
+    .chat-selection-button {
+        width: 26px;
+        min-width: 26px;
+        height: 26px;
+    }
+
+    .chat-input-button {
+        width: 36px;
+        min-width: 36px;
+        height: 36px;
+    }
+
+    .chat-recording-hint {
+        display: none;
     }
 }
 

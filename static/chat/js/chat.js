@@ -7301,7 +7301,19 @@ if (
         );
 
 
+    // На мобильных по умолчанию сворачиваем сайдбар,
+    // чтобы оставить место для ленты сообщений.
     if (savedState === "true") {
+
+        setRoomsSidebarState(
+            true
+        );
+    }
+    else if (
+        savedState === null
+        &&
+        window.innerWidth <= 768
+    ) {
 
         setRoomsSidebarState(
             true
