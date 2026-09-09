@@ -238,25 +238,15 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         # Проверяем право отправлять сообщения.
         if not await self.can_send_messages(self.room):
-            await self.send(
-                text_data=json.dumps(
-                    {
-                        "type": "error",
-                        "message": ("Чтобы отправлять сообщения, " "нужно вступить в комнату."),
-                    }
-                )
+            await self.send_ws_error(
+                "Чтобы отправлять сообщения, нужно вступить в комнату."
             )
             return
 
         # Ограничиваем частоту отправки сообщений.
         if not await self.is_send_rate_ok():
-            await self.send(
-                text_data=json.dumps(
-                    {
-                        "type": "error",
-                        "message": "Слишком много сообщений. Подождите немного.",
-                    }
-                )
+            await self.send_ws_error(
+                "Слишком много сообщений. Подождите немного."
             )
             return
 
@@ -264,14 +254,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         message_text, error = validate_message(text_data)
 
         if error:
-            await self.send(
-                text_data=json.dumps(
-                    {
-                        "type": "error",
-                        "message": error,
-                    }
-                )
-            )
+            await self.send_ws_error(error)
             return
 
         user = self.scope["user"]
@@ -676,9 +659,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         сначала нужно вступить в комнату.
         """
 
-        user = self.scope["user"]
-
-        return room.owner_id == user.id or room.members.filter(id=user.id).exists()
+        return room.is_user_member(self.scope["user"])
 
     @database_sync_to_async
     def is_send_rate_ok(self):
@@ -743,13 +724,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def can_send_messages(self, room):
-        """Проверяет право пользователя отправлять сообщения."""
+        """Проверяет право пользователя отправлять сообщения.
 
-        user = self.scope["user"]
+        Писать могут только участники комнаты (владелец тоже).
+        """
 
-        # Владелец может писать всегда.
-        if room.owner_id == user.id:
-            return True
-
-        # Остальные пользователи должны быть участниками.
-        return room.members.filter(id=user.id).exists()
+        return room.is_user_member(self.scope["user"])

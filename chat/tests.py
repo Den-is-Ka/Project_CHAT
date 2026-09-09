@@ -22,27 +22,8 @@ from .models import (
 User = get_user_model()
 
 
-class ChatConsumerAccessTests(TransactionTestCase):
-    """Доступ к чтению комнаты через WebSocket."""
-
-    def setUp(self):
-        self.owner = User.objects.create_user(
-            username="owner",
-            password="pass-owner-123",
-        )
-        self.member = User.objects.create_user(
-            username="member",
-            password="pass-member-123",
-        )
-        self.other = User.objects.create_user(
-            username="other",
-            password="pass-other-123",
-        )
-        self.room = ChatRoom.objects.create(
-            name="public",
-            owner=self.owner,
-        )
-        self.room.members.add(self.owner)
+class ChatConsumerTestMixin:
+    """Общие помощники для тестов WebSocket-консьюмера."""
 
     def communicator(self, user, room_name):
         app = ChatConsumer.as_asgi()
@@ -77,6 +58,77 @@ class ChatConsumerAccessTests(TransactionTestCase):
 
         self.fail("История сообщений не была отправлена")
 
+    async def receive_until_type(self, comm, expected_type):
+        for _ in range(10):
+            message = await comm.receive_json_from(timeout=5)
+
+            if message["type"] == expected_type:
+                return message
+
+        self.fail(f"Сообщение типа {expected_type} не получено")
+
+
+class MediaUploadMixin:
+    """Создание тестовых файлов и загрузка их в комнату."""
+
+    def make_image(self, name="photo.png"):
+        buffer = BytesIO()
+        image = Image.new("RGB", (2, 2), "#3366ff")
+        image.save(buffer, format="PNG")
+        buffer.seek(0)
+
+        return SimpleUploadedFile(
+            name,
+            buffer.read(),
+            content_type="image/png",
+        )
+
+    def make_video(self, name="clip.mp4"):
+        return SimpleUploadedFile(
+            name,
+            b"fake mp4 bytes",
+            content_type="video/mp4",
+        )
+
+    def make_file(self, name="notes.txt"):
+        return SimpleUploadedFile(
+            name,
+            b"document body",
+            content_type="text/plain",
+        )
+
+    def upload(self, user, **data):
+        self.client.force_login(user)
+
+        return self.client.post(
+            f"/chat/rooms/{self.room.id}/send_file/",
+            data,
+            HTTP_HOST="testserver",
+        )
+
+
+class ChatConsumerAccessTests(ChatConsumerTestMixin, TransactionTestCase):
+    """Доступ к чтению комнаты через WebSocket."""
+
+    def setUp(self):
+        self.owner = User.objects.create_user(
+            username="owner",
+            password="pass-owner-123",
+        )
+        self.member = User.objects.create_user(
+            username="member",
+            password="pass-member-123",
+        )
+        self.other = User.objects.create_user(
+            username="other",
+            password="pass-other-123",
+        )
+        self.room = ChatRoom.objects.create(
+            name="public",
+            owner=self.owner,
+        )
+        self.room.members.add(self.owner)
+
     async def connect_ok_scenario(self, user):
         comm = self.communicator(user, "public")
         connected, _ = await comm.connect()
@@ -106,7 +158,7 @@ class ChatConsumerAccessTests(TransactionTestCase):
         self.run_loop(self.connect_rejected_scenario(self.other))
 
 
-class UnreadNotificationTests(TransactionTestCase):
+class UnreadNotificationTests(ChatConsumerTestMixin, TransactionTestCase):
     """Бейджи непрочитанных обновляются в реальном времени."""
 
     def setUp(self):
@@ -124,46 +176,6 @@ class UnreadNotificationTests(TransactionTestCase):
         )
         self.room.members.add(self.owner)
         self.room.members.add(self.member)
-
-    def communicator(self, user, room_name):
-        app = ChatConsumer.as_asgi()
-        communicator = WebsocketCommunicator(
-            app,
-            f"/ws/chat/{room_name}/",
-        )
-        communicator.scope["user"] = user
-        communicator.scope["url_route"] = {
-            "args": (),
-            "kwargs": {"room_name": room_name},
-        }
-        return communicator
-
-    def run_loop(self, coro):
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-
-        try:
-            return loop.run_until_complete(coro)
-        finally:
-            loop.close()
-
-    async def receive_until_history(self, comm):
-        for _ in range(5):
-            message = await comm.receive_json_from(timeout=5)
-
-            if message["type"] == "history":
-                return message
-
-        self.fail("История сообщений не была отправлена")
-
-    async def receive_until_type(self, comm, expected_type):
-        for _ in range(10):
-            message = await comm.receive_json_from(timeout=5)
-
-            if message["type"] == expected_type:
-                return message
-
-        self.fail(f"Сообщение типа {expected_type} не получено")
 
     async def connect_users(self, users):
         comms = {}
@@ -253,7 +265,7 @@ class UnreadNotificationTests(TransactionTestCase):
         self.run_loop(scenario())
 
 
-class SendMediaMessageViewTests(TransactionTestCase):
+class SendMediaMessageViewTests(MediaUploadMixin, TransactionTestCase):
     """Загрузка файлов (фото, видео, аудио) в комнату."""
 
     def setUp(self):
@@ -275,27 +287,6 @@ class SendMediaMessageViewTests(TransactionTestCase):
         )
         self.room.members.add(self.owner)
         self.room.members.add(self.member)
-
-    def make_image(self, name="photo.png"):
-        buffer = BytesIO()
-        image = Image.new("RGB", (2, 2), "#3366ff")
-        image.save(buffer, format="PNG")
-        buffer.seek(0)
-
-        return SimpleUploadedFile(
-            name,
-            buffer.read(),
-            content_type="image/png",
-        )
-
-    def upload(self, user, **data):
-        self.client.force_login(user)
-
-        return self.client.post(
-            f"/chat/rooms/{self.room.id}/send_file/",
-            data,
-            HTTP_HOST="testserver",
-        )
 
     def test_member_can_upload_image(self):
         response = self.upload(
@@ -522,7 +513,7 @@ class SendMediaMessageViewTests(TransactionTestCase):
         )
 
 
-class RoomMediaViewTests(TransactionTestCase):
+class RoomMediaViewTests(MediaUploadMixin, TransactionTestCase):
     """Панель «Медиа»: группировка файлов и ссылок."""
 
     def setUp(self):
@@ -545,41 +536,6 @@ class RoomMediaViewTests(TransactionTestCase):
         )
         self.room.members.add(self.owner)
         self.room.members.add(self.member)
-
-    def make_image(self, name="photo.png"):
-        buffer = BytesIO()
-        image = Image.new("RGB", (2, 2), "#3366ff")
-        image.save(buffer, format="PNG")
-        buffer.seek(0)
-
-        return SimpleUploadedFile(
-            name,
-            buffer.read(),
-            content_type="image/png",
-        )
-
-    def make_video(self, name="clip.mp4"):
-        return SimpleUploadedFile(
-            name,
-            b"fake mp4 bytes",
-            content_type="video/mp4",
-        )
-
-    def make_file(self, name="notes.txt"):
-        return SimpleUploadedFile(
-            name,
-            b"document body",
-            content_type="text/plain",
-        )
-
-    def upload(self, user, **data):
-        self.client.force_login(user)
-
-        return self.client.post(
-            f"/chat/rooms/{self.room.id}/send_file/",
-            data,
-            HTTP_HOST="testserver",
-        )
 
     def get_media(self, user):
         self.client.force_login(user)
@@ -815,7 +771,7 @@ class RoomUnreadTests(TransactionTestCase):
         self.assertEqual(response.status_code, 403)
 
 
-class ChatConsumerReconnectTests(TransactionTestCase):
+class ChatConsumerReconnectTests(ChatConsumerTestMixin, TransactionTestCase):
     """Стабильность соединения: переподключение, grace, heartbeat."""
 
     GRACE = 1
@@ -868,15 +824,6 @@ class ChatConsumerReconnectTests(TransactionTestCase):
             "kwargs": {"room_name": "stable"},
         }
         return communicator
-
-    def run_loop(self, coro):
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-
-        try:
-            return loop.run_until_complete(coro)
-        finally:
-            loop.close()
 
     async def receive_safe(self, comm, timeout=5):
         """Получает следующее сообщение, не убивая приложение.

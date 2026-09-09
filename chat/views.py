@@ -18,8 +18,13 @@ from chat.forms import (
     ChatRoomUpdateForm,
     SendMediaMessageForm,
 )
-from chat.models import ChatRoom, Message, RoomReadState
-from chat.notifications import notify_room_unread
+from chat.models import (
+    DIRECT_MESSAGE_PREFIX,
+    ChatRoom,
+    Message,
+    RoomReadState,
+)
+from chat.notifications import notify_room_unread, user_unread_count
 from chat.utils import get_attachment_type, serialize_message
 from users.models import User
 
@@ -79,12 +84,6 @@ def _available_rooms(user):
     return ChatRoom.objects.filter(is_private=False)
 
 
-def _is_room_member(room, user_id):
-    """Является ли пользователь участником комнаты (владелец сюда тоже входит)."""
-
-    return room.owner_id == user_id or room.members.filter(id=user_id).exists()
-
-
 def _room_display_name(room, current_user):
     """Отображаемое имя комнаты.
 
@@ -92,7 +91,7 @@ def _room_display_name(room, current_user):
     а не внутреннее имя вида "dm-1-2".
     """
 
-    if room.name.startswith("dm-") and current_user.is_authenticated:
+    if room.is_direct and current_user.is_authenticated:
         other = room.members.exclude(id=current_user.id).first()
 
         if other is not None:
@@ -149,17 +148,14 @@ def _rooms_with_unread(user, rooms_queryset):
     for room in rooms:
         last_read_id = read_states.get(room.id, 0)
 
-        if not _is_room_member(room, user.id):
+        if not room.is_user_member(user):
             room.unread_count = 0
             continue
 
-        room.unread_count = (
-            Message.objects.filter(
-                room=room,
-                id__gt=last_read_id,
-            )
-            .exclude(user=user)
-            .count()
+        room.unread_count = user_unread_count(
+            room.id,
+            user.id,
+            last_read_id,
         )
 
     rooms.sort(key=lambda room: -room.unread_count)
@@ -201,10 +197,7 @@ def chat_page(request, room_name):
     is_room_member = False
 
     if request.user.is_authenticated:
-        is_room_member = _is_room_member(
-            room,
-            request.user.id,
-        )
+        is_room_member = room.is_user_member(request.user)
 
         if room.is_private and not is_room_member:
             raise PermissionDenied("У вас нет доступа к этой комнате.")
@@ -230,10 +223,10 @@ def chat_page(request, room_name):
 
     # Личные (dm-*) комнаты — это "контакты", остальные — "чаты".
     contacts = sorted(
-        (r for r in rooms if r.name.startswith("dm-")),
+        (r for r in rooms if r.is_direct),
         key=lambda r: r.display_name.lower(),
     )
-    chat_rooms = [r for r in rooms if not r.name.startswith("dm-")]
+    chat_rooms = [r for r in rooms if not r.is_direct]
 
     return render(
         request,
@@ -250,6 +243,48 @@ def chat_page(request, room_name):
             "available_users": available_users,
         },
     )
+
+
+def _room_payload(room):
+    """Данные комнаты для ответа клиенту."""
+
+    return {
+        "id": room.id,
+        "name": room.name,
+        "description": room.description,
+        "avatar": (room.avatar.url if room.avatar else None),
+        "is_private": room.is_private,
+    }
+
+
+def _duplicate_name_response():
+    """Ответ при попытке создать/переименовать в занятое имя."""
+
+    return JsonResponse(
+        {
+            "success": False,
+            "errors": {
+                "name": [
+                    {
+                        "message": ("Комната с таким названием " "уже существует."),
+                    }
+                ]
+            },
+        },
+        status=400,
+    )
+
+
+def _dm_room_name(user_id_a, user_id_b):
+    """Создаёт детерминированное имя приватной 1:1 комнаты.
+
+    Не зависит от порядка аргументов: оба пользователя всегда
+    получают одно и то же имя для одной и той же пары.
+    """
+
+    low, high = sorted((user_id_a, user_id_b))
+
+    return f"{DIRECT_MESSAGE_PREFIX}{low}-{high}"
 
 
 class CreateRoomView(LoginRequiredMixin, View):
@@ -276,32 +311,14 @@ class CreateRoomView(LoginRequiredMixin, View):
         try:
             room.save()
         except IntegrityError:
-            return JsonResponse(
-                {
-                    "success": False,
-                    "errors": {
-                        "name": [
-                            {
-                                "message": ("Комната с таким названием " "уже существует."),
-                            }
-                        ]
-                    },
-                },
-                status=400,
-            )
+            return _duplicate_name_response()
 
         room.members.add(request.user)
 
         return JsonResponse(
             {
                 "success": True,
-                "room": {
-                    "id": room.id,
-                    "name": room.name,
-                    "description": room.description,
-                    "avatar": (room.avatar.url if room.avatar else None),
-                    "is_private": room.is_private,
-                },
+                "room": _room_payload(room),
             },
             status=201,
         )
@@ -337,30 +354,12 @@ class UpdateRoomView(LoginRequiredMixin, View):
         try:
             room = form.save()
         except IntegrityError:
-            return JsonResponse(
-                {
-                    "success": False,
-                    "errors": {
-                        "name": [
-                            {
-                                "message": ("Комната с таким названием " "уже существует."),
-                            }
-                        ]
-                    },
-                },
-                status=400,
-            )
+            return _duplicate_name_response()
 
         return JsonResponse(
             {
                 "success": True,
-                "room": {
-                    "id": room.id,
-                    "name": room.name,
-                    "description": room.description,
-                    "avatar": (room.avatar.url if room.avatar else None),
-                    "is_private": room.is_private,
-                },
+                "room": _room_payload(room),
             }
         )
 
@@ -465,11 +464,8 @@ class LeaveRoomView(LoginRequiredMixin, View):
         room.members.remove(request.user)
 
         available_room = (
-            ChatRoom.objects.filter(
-                models.Q(is_private=False) | models.Q(members=request.user) | models.Q(owner=request.user)
-            )
+            _available_rooms(request.user)
             .exclude(id=room.id)
-            .distinct()
             .order_by("id")
             .first()
         )
@@ -539,7 +535,7 @@ class SendMediaMessageView(LoginRequiredMixin, View):
             id=room_id,
         )
 
-        if not _is_room_member(room, request.user.id):
+        if not room.is_user_member(request.user):
             raise PermissionDenied("У вас нет доступа к этой комнате.")
 
         if not self.is_upload_rate_ok(request, room):
@@ -663,9 +659,8 @@ class RoomMediaView(LoginRequiredMixin, View):
             id=room_id,
         )
 
-        if room.is_private and not _is_room_member(
-            room,
-            request.user.id,
+        if room.is_private and not room.is_user_member(
+            request.user,
         ):
             raise PermissionDenied("У вас нет доступа к этой комнате.")
 
@@ -704,18 +699,6 @@ class RoomMediaView(LoginRequiredMixin, View):
                 "links": links,
             }
         )
-
-
-def _dm_room_name(user_id_a, user_id_b):
-    """Создаёт детерминированное имя приватной 1:1 комнаты.
-
-    Не зависит от порядка аргументов: оба пользователя всегда
-    получают одно и то же имя для одной и той же пары.
-    """
-
-    low, high = sorted((user_id_a, user_id_b))
-
-    return f"dm-{low}-{high}"
 
 
 class DirectMessageView(LoginRequiredMixin, View):
@@ -805,10 +788,7 @@ class MarkRoomReadView(LoginRequiredMixin, View):
             id=room_id,
         )
 
-        if not _is_room_member(
-            room,
-            request.user.id,
-        ):
+        if not room.is_user_member(request.user):
             raise PermissionDenied("У вас нет доступа к этой комнате.")
 
         _mark_room_read(

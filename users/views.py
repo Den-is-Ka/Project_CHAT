@@ -43,8 +43,7 @@ def login_view(request):
 def logout_view(request):
     """Выход пользователя из системы."""
 
-    if request.method == "POST":
-        logout(request)
+    logout(request)
 
     return redirect("home")
 

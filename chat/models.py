@@ -1,6 +1,8 @@
+from django.conf import settings
 from django.db import models
 
-from config import settings
+# Префикс имён личных (1:1) комнат: "dm-<id_меньший>-<id_больший>".
+DIRECT_MESSAGE_PREFIX = "dm-"
 
 
 class Message(models.Model):
@@ -139,7 +141,15 @@ class ChatRoom(models.Model):
 
     @property
     def is_direct(self):
-        return self.name.startswith("dm-")
+        return self.name.startswith(DIRECT_MESSAGE_PREFIX)
+
+    def is_user_member(self, user):
+        """Является ли пользователь участником комнаты (владелец сюда тоже входит)."""
+
+        return (
+            self.owner_id == user.id
+            or self.members.filter(id=user.id).exists()
+        )
 
 
 class RoomReadState(models.Model):
