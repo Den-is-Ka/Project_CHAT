@@ -1409,3 +1409,202 @@ class DirectMessageViewTests(TransactionTestCase):
             page.context["room"].display_name,
             "bob",
         )
+
+
+class MessageActionViewTests(TransactionTestCase):
+    """Действия над сообщениями: редактирование, удаление, пересылка."""
+
+    def setUp(self):
+        self.alice = User.objects.create_user(
+            username="alice",
+            password="pass-alice-123",
+        )
+        self.bob = User.objects.create_user(
+            username="bob",
+            password="pass-bob-123",
+        )
+        self.charlie = User.objects.create_user(
+            username="charlie",
+            password="pass-charlie-123",
+        )
+
+        self.room = ChatRoom.objects.create(
+            name="main",
+            owner=self.alice,
+        )
+        self.room.members.add(self.alice)
+        self.room.members.add(self.bob)
+
+        self.room_other = ChatRoom.objects.create(
+            name="other",
+            owner=self.charlie,
+        )
+        self.room_other.members.add(self.charlie)
+
+    def add_message(self, user, room=None, text="привет"):
+        return Message.objects.create(
+            user=user,
+            room=room or self.room,
+            text=text,
+        )
+
+    # --- Редактирование ---
+
+    def test_author_can_edit_message(self):
+        message = self.add_message(self.bob)
+
+        self.client.force_login(self.bob)
+
+        response = self.client.post(
+            f"/chat/messages/{message.id}/edit/",
+            {"text": "обновлённый текст"},
+            HTTP_HOST="testserver",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["success"])
+
+        message.refresh_from_db()
+        self.assertEqual(message.text, "обновлённый текст")
+        self.assertIsNotNone(message.edited_at)
+
+    def test_other_user_cannot_edit_message(self):
+        message = self.add_message(self.bob)
+
+        self.client.force_login(self.charlie)
+
+        response = self.client.post(
+            f"/chat/messages/{message.id}/edit/",
+            {"text": "чужое редактирование"},
+            HTTP_HOST="testserver",
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+        message.refresh_from_db()
+        self.assertEqual(message.text, "привет")
+
+    def test_edit_empty_text_returns_400(self):
+        message = self.add_message(self.bob)
+
+        self.client.force_login(self.bob)
+
+        response = self.client.post(
+            f"/chat/messages/{message.id}/edit/",
+            {"text": "   "},
+            HTTP_HOST="testserver",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(response.json()["success"])
+
+    def test_edit_too_long_text_returns_400(self):
+        message = self.add_message(self.bob)
+
+        self.client.force_login(self.bob)
+
+        response = self.client.post(
+            f"/chat/messages/{message.id}/edit/",
+            {"text": "а" * 1001},
+            HTTP_HOST="testserver",
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    # --- Удаление ---
+
+    def test_author_can_delete_own_message(self):
+        message = self.add_message(self.bob)
+
+        self.client.force_login(self.bob)
+
+        response = self.client.post(
+            f"/chat/messages/{message.id}/delete/",
+            {},
+            HTTP_HOST="testserver",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["success"])
+        self.assertFalse(Message.objects.filter(id=message.id).exists())
+
+    def test_room_owner_can_delete_any_message(self):
+        message = self.add_message(self.bob)
+
+        self.client.force_login(self.alice)
+
+        response = self.client.post(
+            f"/chat/messages/{message.id}/delete/",
+            {},
+            HTTP_HOST="testserver",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Message.objects.filter(id=message.id).exists())
+
+    def test_regular_member_cannot_delete_foreign_message(self):
+        message = self.add_message(self.alice)
+
+        self.client.force_login(self.bob)
+
+        response = self.client.post(
+            f"/chat/messages/{message.id}/delete/",
+            {},
+            HTTP_HOST="testserver",
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertTrue(Message.objects.filter(id=message.id).exists())
+
+    # --- Пересылка ---
+
+    def test_forward_message_to_room(self):
+        message = self.add_message(self.bob)
+
+        self.client.force_login(self.bob)
+
+        # bob состоит в обеих комнатах.
+        self.room_other.members.add(self.bob)
+
+        response = self.client.post(
+            f"/chat/messages/{message.id}/forward/",
+            {"target_room_id": self.room_other.id},
+            HTTP_HOST="testserver",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["success"])
+
+        forwarded = Message.objects.filter(
+            room=self.room_other,
+            user=self.bob,
+            text="привет",
+        )
+        self.assertEqual(forwarded.count(), 1)
+
+    def test_forward_to_room_without_access_returns_403(self):
+        message = self.add_message(self.bob)
+
+        self.client.force_login(self.bob)
+
+        response = self.client.post(
+            f"/chat/messages/{message.id}/forward/",
+            {"target_room_id": self.room_other.id},
+            HTTP_HOST="testserver",
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_forward_without_room_returns_400(self):
+        message = self.add_message(self.bob)
+
+        self.client.force_login(self.bob)
+
+        response = self.client.post(
+            f"/chat/messages/{message.id}/forward/",
+            {},
+            HTTP_HOST="testserver",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(response.json()["success"])
