@@ -10,6 +10,7 @@ from django.db import IntegrityError, models
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils import timezone
 from django.views import View
 
 from chat.forms import (
@@ -797,3 +798,170 @@ class MarkRoomReadView(LoginRequiredMixin, View):
         )
 
         return JsonResponse({"success": True})
+
+
+def _broadcast(room, payload):
+    """Отправляет событие всем подключённым клиентам комнаты."""
+
+    channel_layer = get_channel_layer()
+
+    if channel_layer is None:
+        return
+
+    async_to_sync(channel_layer.group_send)(
+        f"chat_{room.id}",
+        payload,
+    )
+
+
+class MessageEditView(LoginRequiredMixin, View):
+    """Изменение текста сообщения (только автором)."""
+
+    def post(self, request, message_id):
+        message = get_object_or_404(
+            Message.objects.select_related("room", "user"),
+            id=message_id,
+        )
+
+        if message.user_id != request.user.id:
+            raise PermissionDenied("Редактировать сообщение может только его автор.")
+
+        text = (request.POST.get("text") or "").strip()
+
+        if not text:
+            return JsonResponse(
+                {
+                    "success": False,
+                    "error": "Сообщение не может быть пустым.",
+                },
+                status=400,
+            )
+
+        if len(text) > 1000:
+            return JsonResponse(
+                {
+                    "success": False,
+                    "error": "Сообщение не может быть длиннее 1000 символов.",
+                },
+                status=400,
+            )
+
+        message.text = text
+        message.edited_at = timezone.now()
+        message.save(update_fields=["text", "edited_at"])
+
+        payload = serialize_message(message)
+
+        _broadcast(
+            message.room,
+            {
+                "type": "message_updated",
+                "message": payload,
+            },
+        )
+
+        return JsonResponse(
+            {
+                "success": True,
+                "message": payload,
+            }
+        )
+
+
+class MessageDeleteView(LoginRequiredMixin, View):
+    """Удаление сообщения (автором или владельцем комнаты)."""
+
+    def post(self, request, message_id):
+        message = get_object_or_404(
+            Message.objects.select_related("room"),
+            id=message_id,
+        )
+
+        if (
+            message.user_id != request.user.id
+            and message.room.owner_id != request.user.id
+        ):
+            raise PermissionDenied(
+                "Удалять сообщение может только его автор или владелец комнаты."
+            )
+
+        room = message.room
+
+        message.delete()
+
+        _broadcast(
+            room,
+            {
+                "type": "message_deleted",
+                "message_id": message_id,
+            },
+        )
+
+        # После удаления счётчики непрочитанных могли измениться.
+        notify_room_unread(room.id, request.user.id)
+
+        return JsonResponse({"success": True})
+
+
+class MessageForwardView(LoginRequiredMixin, View):
+    """Пересылает сообщение в выбранную комнату."""
+
+    def post(self, request, message_id):
+        source_message = get_object_or_404(
+            Message.objects.select_related("room"),
+            id=message_id,
+        )
+
+        raw_target_room_id = request.POST.get("target_room_id")
+
+        try:
+            target_room_id = int(raw_target_room_id)
+        except (TypeError, ValueError):
+            return JsonResponse(
+                {
+                    "success": False,
+                    "error": "Выберите комнату.",
+                },
+                status=400,
+            )
+
+        target_room = get_object_or_404(
+            ChatRoom,
+            id=target_room_id,
+        )
+
+        if not target_room.is_user_member(request.user):
+            raise PermissionDenied("У вас нет доступа к этой комнате.")
+
+        message = Message.objects.create(
+            user=request.user,
+            room=target_room,
+            text=source_message.text,
+            attachment=source_message.attachment,
+            attachment_type=source_message.attachment_type,
+            attachment_name=source_message.attachment_name,
+        )
+
+        message = (
+            Message.objects.select_related("user")
+            .get(pk=message.pk)
+        )
+
+        payload = serialize_message(message)
+
+        _broadcast(
+            target_room,
+            {
+                "type": "chat_message",
+                **payload,
+            },
+        )
+
+        notify_room_unread(target_room.id, request.user.id)
+
+        return JsonResponse(
+            {
+                "success": True,
+                "message": payload,
+            }
+        )
