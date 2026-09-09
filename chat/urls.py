@@ -7,6 +7,9 @@ from .views import (
     JoinRoomView,
     LeaveRoomView,
     MarkRoomReadView,
+    MessageDeleteView,
+    MessageEditView,
+    MessageForwardView,
     RemoveRoomMemberView,
     RoomMediaView,
     SendMediaMessageView,
@@ -65,6 +68,21 @@ urlpatterns = [
         "rooms/<int:room_id>/read/",
         MarkRoomReadView.as_view(),
         name="room_read",
+    ),
+    path(
+        "messages/<int:message_id>/edit/",
+        MessageEditView.as_view(),
+        name="edit_message",
+    ),
+    path(
+        "messages/<int:message_id>/delete/",
+        MessageDeleteView.as_view(),
+        name="delete_message",
+    ),
+    path(
+        "messages/<int:message_id>/forward/",
+        MessageForwardView.as_view(),
+        name="forward_message",
     ),
     path(
         "direct/",
