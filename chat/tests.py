@@ -106,6 +106,153 @@ class ChatConsumerAccessTests(TransactionTestCase):
         self.run_loop(self.connect_rejected_scenario(self.other))
 
 
+class UnreadNotificationTests(TransactionTestCase):
+    """Бейджи непрочитанных обновляются в реальном времени."""
+
+    def setUp(self):
+        self.owner = User.objects.create_user(
+            username="owner2",
+            password="pass-owner-123",
+        )
+        self.member = User.objects.create_user(
+            username="member2",
+            password="pass-member-123",
+        )
+        self.room = ChatRoom.objects.create(
+            name="unread-room",
+            owner=self.owner,
+        )
+        self.room.members.add(self.owner)
+        self.room.members.add(self.member)
+
+    def communicator(self, user, room_name):
+        app = ChatConsumer.as_asgi()
+        communicator = WebsocketCommunicator(
+            app,
+            f"/ws/chat/{room_name}/",
+        )
+        communicator.scope["user"] = user
+        communicator.scope["url_route"] = {
+            "args": (),
+            "kwargs": {"room_name": room_name},
+        }
+        return communicator
+
+    def run_loop(self, coro):
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        try:
+            return loop.run_until_complete(coro)
+        finally:
+            loop.close()
+
+    async def receive_until_history(self, comm):
+        for _ in range(5):
+            message = await comm.receive_json_from(timeout=5)
+
+            if message["type"] == "history":
+                return message
+
+        self.fail("История сообщений не была отправлена")
+
+    async def receive_until_type(self, comm, expected_type):
+        for _ in range(10):
+            message = await comm.receive_json_from(timeout=5)
+
+            if message["type"] == expected_type:
+                return message
+
+        self.fail(f"Сообщение типа {expected_type} не получено")
+
+    async def connect_users(self, users):
+        comms = {}
+
+        for user in users:
+            comm = self.communicator(user, "unread-room")
+            connected, _ = await comm.connect()
+            self.assertTrue(connected)
+            await self.receive_until_history(comm)
+            comms[user.id] = comm
+
+        return comms
+
+    def test_unread_update_after_message(self):
+        async def scenario():
+            comms = await self.connect_users(
+                [self.owner, self.member]
+            )
+
+            try:
+                await comms[self.owner.id].send_json_to(
+                    {"message": "привет"}
+                )
+
+                unread = await self.receive_until_type(
+                    comms[self.member.id],
+                    "unread_update",
+                )
+
+                self.assertEqual(
+                    unread["room_id"],
+                    self.room.id,
+                )
+                self.assertEqual(
+                    unread["unread_count"],
+                    1,
+                )
+
+            finally:
+                for comm in comms.values():
+                    await comm.disconnect()
+
+        self.run_loop(scenario())
+
+    def test_unread_update_after_comment(self):
+        async def scenario():
+            comms = await self.connect_users(
+                [self.owner, self.member]
+            )
+
+            try:
+                await comms[self.member.id].send_json_to(
+                    {"message": "вопрос"}
+                )
+
+                msg = await self.receive_until_type(
+                    comms[self.owner.id],
+                    "message",
+                )
+
+                await comms[self.owner.id].send_json_to(
+                    {
+                        "type": "comment",
+                        "text": "ответ",
+                        "reply_to_id": msg["id"],
+                    }
+                )
+
+                unread = await self.receive_until_type(
+                    comms[self.member.id],
+                    "unread_update",
+                )
+
+                self.assertEqual(
+                    unread["room_id"],
+                    self.room.id,
+                )
+                self.assertEqual(
+                    unread["unread_count"],
+                    1,
+                )
+
+            finally:
+                for comm in comms.values():
+                    await comm.disconnect()
+
+        self.run_loop(scenario())
+
+
 class SendMediaMessageViewTests(TransactionTestCase):
     """Загрузка файлов (фото, видео, аудио) в комнату."""
 
@@ -259,6 +406,21 @@ class SendMediaMessageViewTests(TransactionTestCase):
         self.assertEqual(
             response.json()["error"],
             "Сообщение не найдено.",
+        )
+
+    def test_upload_notifies_unread(self):
+        with patch("chat.views.notify_room_unread") as mock_notify:
+            response = self.upload(
+                self.member,
+                file=self.make_image(),
+                caption="Фото",
+            )
+
+        self.assertEqual(response.status_code, 201)
+
+        mock_notify.assert_called_once_with(
+            self.room.id,
+            self.member.id,
         )
 
     def test_video_attachment_type_detected(self):
