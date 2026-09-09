@@ -143,6 +143,11 @@ class SendMediaMessageForm(forms.Form):
         max_length=1000,
         label="Подпись",
     )
+    reply_to_id = forms.IntegerField(
+        required=False,
+        min_value=1,
+        label="Сообщение, на которое дан ответ",
+    )
 
     def clean_file(self):
         file = self.cleaned_data.get("file")

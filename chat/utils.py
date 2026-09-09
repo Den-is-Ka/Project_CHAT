@@ -149,6 +149,7 @@ def _serialize_reply_to(message):
                 "username": original.user.username,
                 "avatar": (original.user.avatar.url if original.user.avatar else None),
                 "message": original.text,
+                "created_at": original.created_at.isoformat(),
                 "attachment": (original.attachment.url if original.attachment else None),
                 "attachment_type": original.attachment_type,
                 "attachment_name": original.attachment_name,

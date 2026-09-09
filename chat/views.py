@@ -557,6 +557,33 @@ class SendMediaMessageView(LoginRequiredMixin, View):
 
         file = form.cleaned_data["file"]
         caption = form.cleaned_data["caption"]
+        reply_to_id = form.cleaned_data.get("reply_to_id")
+
+        reply_to = None
+
+        if reply_to_id:
+            reply_to = Message.objects.filter(
+                id=reply_to_id,
+                room=room,
+            ).first()
+
+            if reply_to is None:
+                return JsonResponse(
+                    {
+                        "success": False,
+                        "error": "Сообщение не найдено.",
+                    },
+                    status=400,
+                )
+
+            if reply_to.user_id == request.user.id:
+                return JsonResponse(
+                    {
+                        "success": False,
+                        "error": "Нельзя отвечать на свои сообщения.",
+                    },
+                    status=400,
+                )
 
         message = Message.objects.create(
             user=request.user,
@@ -568,6 +595,7 @@ class SendMediaMessageView(LoginRequiredMixin, View):
                 file.content_type,
             ),
             attachment_name=file.name,
+            reply_to=reply_to,
         )
 
         payload = serialize_message(
