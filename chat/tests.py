@@ -1599,6 +1599,7 @@ class MessageActionViewTests(TransactionTestCase):
 
     def test_forward_without_room_returns_400(self):
         message = self.add_message(self.bob)
+
         self.client.force_login(self.bob)
 
         response = self.client.post(
