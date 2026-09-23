@@ -128,6 +128,13 @@ STATIC_URL = "/static/"
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
+# В Docker защищённые chat_files после проверки Django отдаёт nginx
+# через внутренний X-Accel-Redirect. При локальном запуске Django
+# возвращает FileResponse напрямую.
+USE_NGINX_PROTECTED_MEDIA = (
+    os.getenv("USE_NGINX_PROTECTED_MEDIA", "False") == "True"
+)
+
 STATICFILES_DIRS = [
     BASE_DIR / "static",
 ]
