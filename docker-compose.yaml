@@ -18,10 +18,11 @@ services:
       # чтобы статусы и группы работали у всех workers.
       USE_REDIS_CHANNEL_LAYER: "True"
       REDIS_HOST: redis
-      # SQLite-файл и WAL-сайдкары (-wal/-shm) — в постоянном каталоге,
-      # чтобы данные переживали пересоздание контейнера.
-      DB_PATH: /app/db/db.sqlite3
+      DB_HOST: postgres
+      DB_PORT: "5432"
     depends_on:
+      postgres:
+        condition: service_healthy
       redis:
         condition: service_healthy
     healthcheck:
@@ -37,9 +38,27 @@ services:
       retries: 10
       start_period: 30s
     volumes:
-      - ./db:/app/db
       - ./media:/app/media
       - ./staticfiles:/app/staticfiles
+
+  postgres:
+    image: postgres:17-alpine
+    container_name: project-chat-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-project_chat}
+      POSTGRES_USER: ${DB_USER:-project_chat}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set in .env}
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U ${DB_USER:-project_chat} -d ${DB_NAME:-project_chat}
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
 
   redis:
     image: redis:7-alpine
@@ -64,3 +83,6 @@ services:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./staticfiles:/app/staticfiles:ro
       - ./media:/app/media:ro
+
+volumes:
+  postgres_data:
