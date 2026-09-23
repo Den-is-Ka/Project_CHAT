@@ -1,10 +1,8 @@
 import re
-import time
 
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.core.cache import cache
 from django.core.exceptions import PermissionDenied
 from django.db import IntegrityError, models
 from django.http import JsonResponse
@@ -26,6 +24,7 @@ from chat.models import (
     RoomReadState,
 )
 from chat.notifications import notify_room_unread, user_unread_count
+from chat.rate_limit import rate_limit_allows
 from chat.utils import get_attachment_type, serialize_message
 from users.models import User
 
@@ -634,21 +633,13 @@ class SendMediaMessageView(LoginRequiredMixin, View):
     def is_upload_rate_ok(self, request, room):
         """Ограничивает частоту загрузки файлов через кэш."""
 
-        window = int(time.time()) // MEDIA_UPLOAD_WINDOW
-        key = f"chat:media_rate:" f"{request.user.id}:{room.id}:{window}"
+        key_prefix = f"chat:media_rate:{request.user.id}:{room.id}"
 
-        count = cache.get(key, 0)
-
-        if count >= MAX_MEDIA_UPLOADS:
-            return False
-
-        cache.set(
-            key,
-            count + 1,
-            MEDIA_UPLOAD_WINDOW + 10,
+        return rate_limit_allows(
+            key_prefix=key_prefix,
+            limit=MAX_MEDIA_UPLOADS,
+            window_seconds=MEDIA_UPLOAD_WINDOW,
         )
-
-        return True
 
 
 class RoomMediaView(LoginRequiredMixin, View):
@@ -942,10 +933,7 @@ class MessageForwardView(LoginRequiredMixin, View):
             attachment_name=source_message.attachment_name,
         )
 
-        message = (
-            Message.objects.select_related("user")
-            .get(pk=message.pk)
-        )
+        message = Message.objects.select_related("user").get(pk=message.pk)
 
         payload = serialize_message(message)
 
