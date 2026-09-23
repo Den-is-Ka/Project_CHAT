@@ -1,10 +1,8 @@
 import asyncio
 import json
-import time
 
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
-from django.core.cache import cache
 
 from . import notifications
 from .models import (
@@ -23,6 +21,7 @@ from .presence import (
     mark_reconnect_grace,
     remove_online_user,
 )
+from .rate_limit import rate_limit_allows
 from .utils import serialize_message
 from .validators import validate_message
 
@@ -287,6 +286,12 @@ class ChatConsumer(AsyncWebsocketConsumer):
             await self.send_ws_error("Чтобы ставить реакции, нужно вступить в комнату.")
             return
 
+        if not await self.is_send_rate_ok():
+            await self.send_ws_error(
+                "Слишком много сообщений. Подождите немного."
+            )
+            return
+
         try:
             message_id = int(incoming.get("message_id"))
         except (TypeError, ValueError):
@@ -341,6 +346,12 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         if not await self.can_send_messages(self.room):
             await self.send_ws_error("Чтобы отвечать, нужно вступить в комнату.")
+            return
+
+        if not await self.is_send_rate_ok():
+            await self.send_ws_error(
+                "Слишком много сообщений. Подождите немного."
+            )
             return
 
         try:
@@ -691,19 +702,13 @@ class ChatConsumer(AsyncWebsocketConsumer):
         """Проверяет лимит частоты отправки сообщений для пользователя."""
 
         user = self.scope["user"]
+        key_prefix = f"chat:send_rate:{user.id}:{self.room.id}"
 
-        window = int(time.time()) // SEND_RATE_WINDOW
-        key = f"chat:send_rate:{user.id}:{self.room.id}:{window}"
-
-        count = cache.get(key, 0)
-
-        if count >= SEND_RATE_LIMIT:
-            return False
-
-        # +10 секунд, чтобы счётчик не уплывал сразу по истечении окна.
-        cache.set(key, count + 1, SEND_RATE_WINDOW + 10)
-
-        return True
+        return rate_limit_allows(
+            key_prefix=key_prefix,
+            limit=SEND_RATE_LIMIT,
+            window_seconds=SEND_RATE_WINDOW,
+        )
 
     # =========================
     # Presence (кэш)
