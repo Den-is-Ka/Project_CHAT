@@ -17,6 +17,7 @@ services:
       # В Docker канал WebSocket и кэш должны быть на Redis,
       # чтобы статусы и группы работали у всех workers.
       USE_REDIS_CHANNEL_LAYER: "True"
+      USE_NGINX_PROTECTED_MEDIA: "True"
       REDIS_HOST: redis
       DB_HOST: postgres
       DB_PORT: "5432"
