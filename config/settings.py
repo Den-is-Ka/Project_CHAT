@@ -77,26 +77,14 @@ ASGI_APPLICATION = 'config.asgi.application'
 # Database
 # https://docs.djangoproject.com/en/6.1/ref/settings/#databases
 
-# Где лежит SQLite-файл. В Docker настраивается на постоянный каталог,
-# чтобы WAL-файлы (-wal/-shm) сохранялись между перезапусками.
-DB_PATH = os.getenv(
-    "DB_PATH",
-    str(BASE_DIR / "db.sqlite3"),
-)
-
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': DB_PATH,
-        'OPTIONS': {
-            # Снижает ошибки «database is locked» при конкурентных записях.
-            'timeout': 20,
-            # WAL: читатели не блокируют записывающего и наоборот.
-            'init_command': ('PRAGMA journal_mode=WAL;' 'PRAGMA synchronous=NORMAL;'),
-            # BEGIN IMMEDIATE берёт RESERVED lock сразу, без
-            # дедлока при апгрейде отложенной транзакции.
-            'transaction_mode': 'IMMEDIATE',
-        },
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': os.getenv('DB_NAME', 'project_chat'),
+        'USER': os.getenv('DB_USER', 'project_chat'),
+        'PASSWORD': os.getenv('DB_PASSWORD', ''),
+        'HOST': os.getenv('DB_HOST', 'localhost'),
+        'PORT': os.getenv('DB_PORT', '5432'),
     }
 }
 
