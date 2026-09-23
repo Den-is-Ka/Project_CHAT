@@ -1385,9 +1385,11 @@ class DirectMessageViewTests(TransactionTestCase):
             HTTP_HOST="localhost",
         )
 
+        contact_names = [r.name for r in page.context["contacts"]]
         room_names = [r.name for r in page.context["rooms"]]
 
-        self.assertIn(room_name, room_names)
+        self.assertIn(room_name, contact_names)
+        self.assertNotIn(room_name, room_names)
 
     def test_chat_page_display_name_is_other_username(self):
         self.client.force_login(self.alice)
@@ -1597,7 +1599,6 @@ class MessageActionViewTests(TransactionTestCase):
 
     def test_forward_without_room_returns_400(self):
         message = self.add_message(self.bob)
-
         self.client.force_login(self.bob)
 
         response = self.client.post(
