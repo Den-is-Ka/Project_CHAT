@@ -47,6 +47,25 @@ class ChatConsumerTestMixin:
         try:
             return loop.run_until_complete(coro)
         finally:
+            pending = [
+                task
+                for task in asyncio.all_tasks(loop)
+                if not task.done()
+            ]
+
+            for task in pending:
+                task.cancel()
+
+            if pending:
+                loop.run_until_complete(
+                    asyncio.gather(
+                        *pending,
+                        return_exceptions=True,
+                    )
+                )
+
+            loop.run_until_complete(loop.shutdown_asyncgens())
+            asyncio.set_event_loop(None)
             loop.close()
 
     async def receive_until_history(self, comm):
