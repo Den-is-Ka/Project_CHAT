@@ -158,12 +158,17 @@ class SendMediaMessageForm(forms.Form):
         if file.size > MAX_ATTACHMENT_SIZE:
             raise forms.ValidationError("Файл не должен превышать 20 МБ.")
 
-        ext = (file.name or "").lower()
+        name = (file.name or "").lower()
 
-        if get_attachment_type(ext, file.content_type) == "file" and not ext.endswith(tuple(ALLOWED_EXTENSIONS)):
+        if not name.endswith(tuple(ALLOWED_EXTENSIONS)):
             raise forms.ValidationError("Недопустимый тип файла.")
 
-        if get_attachment_type(ext, file.content_type) == "image":
+        attachment_type = get_attachment_type(
+            name,
+            file.content_type,
+        )
+
+        if attachment_type == "image":
             try:
                 validate_image_file(file)
             except ValueError as exc:
