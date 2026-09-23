@@ -903,6 +903,9 @@ class MessageForwardView(LoginRequiredMixin, View):
             id=message_id,
         )
 
+        if not source_message.room.is_user_member(request.user):
+            raise PermissionDenied("У вас нет доступа к исходному сообщению.")
+
         raw_target_room_id = request.POST.get("target_room_id")
 
         try:
