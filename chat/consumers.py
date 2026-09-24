@@ -37,7 +37,7 @@ SEND_RATE_LIMIT = 10
 SEND_RATE_WINDOW = 5
 
 # Сколько последних сообщений отдаётся при подключении.
-MESSAGE_HISTORY_LIMIT = 200
+MESSAGE_HISTORY_LIMIT = 50
 
 
 class ChatConsumer(AsyncWebsocketConsumer):
@@ -623,7 +623,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             Message.objects.filter(room_id=room_id)
             .select_related("user")
             .select_related("reply_to__user")
-            .order_by("-created_at")[:MESSAGE_HISTORY_LIMIT]
+            .order_by("-id")[:MESSAGE_HISTORY_LIMIT]
         )
 
         messages.reverse()
