@@ -1,5 +1,6 @@
 from django.urls import path
 
+from .history import MessageHistoryView
 from .room_media_access import MemberRoomMediaView
 from .views import (
     AddRoomMemberView,
@@ -63,6 +64,11 @@ urlpatterns = [
         "rooms/<int:room_id>/media/",
         MemberRoomMediaView.as_view(),
         name="room_media",
+    ),
+    path(
+        "rooms/<int:room_id>/history/",
+        MessageHistoryView.as_view(),
+        name="room_history",
     ),
     path(
         "rooms/<int:room_id>/read/",
