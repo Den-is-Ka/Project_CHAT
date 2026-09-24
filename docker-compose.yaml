@@ -18,6 +18,7 @@ services:
       # чтобы статусы и группы работали у всех workers.
       USE_REDIS_CHANNEL_LAYER: "True"
       USE_NGINX_PROTECTED_MEDIA: "True"
+      TRUST_PROXY_CLIENT_IP: "True"
       REDIS_HOST: redis
       DB_HOST: postgres
       DB_PORT: "5432"
