@@ -26,6 +26,12 @@ CSRF_TRUSTED_ORIGINS = os.getenv(
     "http://127.0.0.1:8000,http://localhost:8000",
 ).split(",")
 
+# Доверять клиентскому IP из reverse proxy можно только когда
+# приложение действительно закрыто за контролируемым proxy.
+TRUST_PROXY_CLIENT_IP = (
+    os.getenv("TRUST_PROXY_CLIENT_IP", "False") == "True"
+)
+
 # Application definition
 
 INSTALLED_APPS = [
