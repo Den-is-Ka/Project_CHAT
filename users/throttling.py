@@ -1,4 +1,4 @@
-"""Простой rate limiting на основе Django cache.
+"""Rate limiting для входа и регистрации на основе Django cache.
 
 Используется фиксированное временное окно; счётчики живут в кэше,
 поэтому лимиты общие для всех процессов, когда кэш общий (Redis).
@@ -6,7 +6,9 @@
 
 import time
 from functools import wraps
+from ipaddress import ip_address
 
+from django.conf import settings
 from django.core.cache import cache
 from django.http import JsonResponse
 
@@ -14,15 +16,55 @@ DEFAULT_LIMIT = 10
 DEFAULT_PERIOD = 300  # секунд
 
 
+def _normalized_ip(value):
+    """Нормализует IP-адрес или возвращает пустую строку."""
+
+    try:
+        return str(ip_address((value or "").strip()))
+    except ValueError:
+        return ""
+
+
 def _client_ip(request):
-    """Возвращает IP клиента (с учётом прокси-заголовков)."""
+    """Возвращает доверенный IP клиента для rate limiting.
 
-    forwarded = request.META.get("HTTP_X_FORWARDED_FOR")
+    Прокси-заголовок учитывается только при явном включении режима
+    доверенного reverse proxy. В Docker nginx перезаписывает
+    X-Forwarded-For реальным адресом клиента.
+    """
 
-    if forwarded:
-        return forwarded.split(",")[0].strip()
+    remote_addr = _normalized_ip(request.META.get("REMOTE_ADDR"))
 
-    return request.META.get("REMOTE_ADDR", "")
+    if not settings.TRUST_PROXY_CLIENT_IP:
+        return remote_addr
+
+    forwarded = _normalized_ip(
+        request.META.get("HTTP_X_FORWARDED_FOR")
+    )
+
+    return forwarded or remote_addr
+
+
+def _rate_limit_allows(cache_key, limit, period):
+    """Атомарно учитывает запрос в текущем временном окне."""
+
+    timeout = period + 10
+
+    if cache.add(cache_key, 1, timeout=timeout):
+        return True
+
+    try:
+        count = cache.incr(cache_key)
+    except ValueError:
+        if cache.add(cache_key, 1, timeout=timeout):
+            return True
+
+        try:
+            count = cache.incr(cache_key)
+        except ValueError:
+            return False
+
+    return count <= limit
 
 
 def rate_limit(key, limit=DEFAULT_LIMIT, period=DEFAULT_PERIOD, message=""):
@@ -36,9 +78,12 @@ def rate_limit(key, limit=DEFAULT_LIMIT, period=DEFAULT_PERIOD, message=""):
         def _wrapped(request, *args, **kwargs):
             window = int(time.time()) // period
             cache_key = f"throttle:{key(request)}:{window}"
-            count = cache.get(cache_key, 0)
 
-            if count >= limit:
+            if not _rate_limit_allows(
+                cache_key,
+                limit,
+                period,
+            ):
                 return JsonResponse(
                     {
                         "success": False,
@@ -47,7 +92,6 @@ def rate_limit(key, limit=DEFAULT_LIMIT, period=DEFAULT_PERIOD, message=""):
                     status=429,
                 )
 
-            cache.set(cache_key, count + 1, period + 10)
             return view(request, *args, **kwargs)
 
         return _wrapped
