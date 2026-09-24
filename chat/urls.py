@@ -1,5 +1,6 @@
 from django.urls import path
 
+from .room_media_access import MemberRoomMediaView
 from .views import (
     AddRoomMemberView,
     CreateRoomView,
@@ -11,7 +12,6 @@ from .views import (
     MessageEditView,
     MessageForwardView,
     RemoveRoomMemberView,
-    RoomMediaView,
     SendMediaMessageView,
     UpdateRoomView,
     chat_page,
@@ -61,7 +61,7 @@ urlpatterns = [
     ),
     path(
         "rooms/<int:room_id>/media/",
-        RoomMediaView.as_view(),
+        MemberRoomMediaView.as_view(),
         name="room_media",
     ),
     path(
