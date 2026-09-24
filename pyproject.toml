@@ -54,7 +54,7 @@ line_length = 119
 skip = [".venv", "venv"]
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.14"
 warn_return_any = true
 warn_unused_configs = true
 show_error_codes = true
