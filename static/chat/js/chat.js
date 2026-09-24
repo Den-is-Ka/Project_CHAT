@@ -324,6 +324,12 @@ function handleWebSocketMessage(event) {
             break;
 
 
+        case "pong":
+
+            // Heartbeat response: confirms the WebSocket connection is alive.
+            break;
+
+
         case "online_users":
 
             updateOnlineUsers(
