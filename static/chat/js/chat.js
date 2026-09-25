@@ -371,6 +371,25 @@ function handleWebSocketMessage(event) {
             break;
 
 
+        case "read_receipts":
+
+            applyReadReceiptSnapshot(
+                data.readers
+            );
+
+            break;
+
+
+        case "read_receipt":
+
+            applyReadReceipt(
+                data.username,
+                data.last_read_message_id
+            );
+
+            break;
+
+
         case "typing":
 
             updateTypingIndicator(
@@ -531,6 +550,169 @@ function updateOnlineUsers(users) {
 // Messages
 // ==================================================
 
+const readReceiptStates =
+    new Map();
+
+
+function getMessageReaders(messageId) {
+
+    const readers = [];
+
+    readReceiptStates.forEach(
+        function (
+            lastReadMessageId,
+            username
+        ) {
+
+            if (
+                lastReadMessageId
+                >=
+                messageId
+            ) {
+                readers.push(username);
+            }
+        }
+    );
+
+    return readers;
+}
+
+
+function updateMessageReadReceipt(
+    messageElement
+) {
+
+    if (
+        !messageElement
+        ||
+        !messageElement.classList.contains(
+            "own"
+        )
+    ) {
+        return;
+    }
+
+    const messageId =
+        Number(
+            messageElement.dataset.messageId
+        );
+
+    if (
+        !Number.isInteger(messageId)
+        ||
+        messageId <= 0
+    ) {
+        return;
+    }
+
+    const receipt =
+        messageElement.querySelector(
+            ".message-read-receipt"
+        );
+
+    if (!receipt) {
+        return;
+    }
+
+    const readers =
+        getMessageReaders(messageId);
+
+    if (readers.length === 0) {
+        receipt.textContent = "\u2713";
+        receipt.title = "\u041e\u0442\u043f\u0440\u0430\u0432\u043b\u0435\u043d\u043e";
+        return;
+    }
+
+    receipt.textContent =
+        "\u2713\u2713";
+
+    receipt.title =
+        "\u041f\u0440\u043e\u0447\u0438\u0442\u0430\u043b\u0438: "
+        +
+        readers.join(", ");
+}
+
+
+function refreshReadReceipts() {
+
+    if (!chatLog) {
+        return;
+    }
+
+    chatLog.querySelectorAll(
+        ".message.own[data-message-id]"
+    ).forEach(
+        updateMessageReadReceipt
+    );
+}
+
+
+function applyReadReceipt(
+    username,
+    lastReadMessageId
+) {
+
+    if (
+        !username
+        ||
+        username === chatConfig.username
+    ) {
+        return;
+    }
+
+    const boundary =
+        Number(lastReadMessageId);
+
+    if (
+        !Number.isInteger(boundary)
+        ||
+        boundary <= 0
+    ) {
+        return;
+    }
+
+    const previous =
+        readReceiptStates.get(username)
+        ||
+        0;
+
+    if (boundary <= previous) {
+        return;
+    }
+
+    readReceiptStates.set(
+        username,
+        boundary
+    );
+
+    refreshReadReceipts();
+}
+
+
+function applyReadReceiptSnapshot(
+    readers
+) {
+
+    if (!Array.isArray(readers)) {
+        return;
+    }
+
+    readers.forEach(
+        function (reader) {
+
+            if (!reader) {
+                return;
+            }
+
+            applyReadReceipt(
+                reader.username,
+                reader.last_read_message_id
+            );
+        }
+    );
+}
+
+
 function addMessage(data) {
 
     if (!chatLog) {
@@ -678,6 +860,26 @@ function addMessage(data) {
             }
         );
 
+    if (data.username === currentUser) {
+
+        const readReceipt =
+            document.createElement("span");
+
+        readReceipt.classList.add(
+            "message-read-receipt"
+        );
+
+        readReceipt.textContent =
+            "\u2713";
+
+        readReceipt.title =
+            "\u041e\u0442\u043f\u0440\u0430\u0432\u043b\u0435\u043d\u043e";
+
+        time.appendChild(
+            readReceipt
+        );
+    }
+
 
     header.appendChild(time);
 
@@ -760,6 +962,10 @@ function addMessage(data) {
 
     messageElement.dataset.messageId =
         String(data.id);
+
+    updateMessageReadReceipt(
+        messageElement
+    );
 
     // Сохраняем исходные данные для построения
     // цитаты при ответе (reply).

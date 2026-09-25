@@ -790,6 +790,150 @@ class RoomUnreadTests(TransactionTestCase):
         self.assertEqual(response.status_code, 403)
 
 
+class ChatConsumerReadReceiptTests(
+    ChatConsumerTestMixin,
+    TransactionTestCase,
+):
+
+    def setUp(self):
+        self.owner = User.objects.create_user(
+            username="receipt-owner",
+            password="pass-owner-123",
+        )
+        self.member = User.objects.create_user(
+            username="receipt-member",
+            password="pass-member-123",
+        )
+        self.room = ChatRoom.objects.create(
+            name="receipt-room",
+            owner=self.owner,
+        )
+        self.room.members.add(
+            self.owner,
+            self.member,
+        )
+
+    async def connect_until_history(self, comm):
+        connected, _ = await comm.connect()
+        self.assertTrue(connected)
+        await self.receive_until_history(comm)
+
+    def test_mark_read_broadcasts_live_receipt(self):
+        message = Message.objects.create(
+            user=self.owner,
+            room=self.room,
+            text="receipt live",
+        )
+
+        self.client.force_login(self.member)
+
+        async def scenario():
+            owner_comm = self.communicator(
+                self.owner,
+                self.room.name,
+            )
+            member_comm = self.communicator(
+                self.member,
+                self.room.name,
+            )
+
+            await self.connect_until_history(owner_comm)
+            await self.connect_until_history(member_comm)
+
+            response = await sync_to_async(
+                self.client.post
+            )(
+                f"/chat/rooms/{self.room.id}/read/",
+                HTTP_HOST="testserver",
+            )
+
+            self.assertEqual(
+                response.status_code,
+                200,
+            )
+            self.assertTrue(
+                response.json()["success"]
+            )
+            self.assertEqual(
+                response.json()[
+                    "last_read_message_id"
+                ],
+                message.id,
+            )
+
+            receipt = await self.receive_until_type(
+                owner_comm,
+                "read_receipt",
+            )
+
+            self.assertEqual(
+                receipt["username"],
+                self.member.username,
+            )
+            self.assertEqual(
+                receipt["last_read_message_id"],
+                message.id,
+            )
+
+            state = await sync_to_async(
+                RoomReadState.objects.get
+            )(
+                user=self.member,
+                room=self.room,
+            )
+
+            self.assertEqual(
+                state.last_read_message_id,
+                message.id,
+            )
+
+            await member_comm.disconnect()
+            await owner_comm.disconnect()
+
+        self.run_loop(scenario())
+
+    def test_connect_sends_persisted_read_receipts_snapshot(self):
+        message = Message.objects.create(
+            user=self.owner,
+            room=self.room,
+            text="receipt persisted",
+        )
+
+        RoomReadState.objects.create(
+            user=self.member,
+            room=self.room,
+            last_read_message_id=message.id,
+        )
+
+        async def scenario():
+            owner_comm = self.communicator(
+                self.owner,
+                self.room.name,
+            )
+
+            connected, _ = await owner_comm.connect()
+            self.assertTrue(connected)
+
+            snapshot = await self.receive_until_type(
+                owner_comm,
+                "read_receipts",
+            )
+
+            self.assertEqual(
+                snapshot["readers"],
+                [
+                    {
+                        "username": self.member.username,
+                        "last_read_message_id": message.id,
+                    }
+                ],
+            )
+
+            await owner_comm.disconnect()
+
+        self.run_loop(scenario())
+
+
 class ChatConsumerTypingTests(ChatConsumerTestMixin, TransactionTestCase):
 
     def setUp(self):

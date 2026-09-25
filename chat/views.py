@@ -113,6 +113,8 @@ def _mark_room_read(user, room):
         },
     )
 
+    return last_message_id
+
 
 def _rooms_with_unread(user, rooms_queryset):
     """Возвращает список комнат с полем unread_count.
@@ -783,12 +785,27 @@ class MarkRoomReadView(LoginRequiredMixin, View):
         if not room.is_user_member(request.user):
             raise PermissionDenied("У вас нет доступа к этой комнате.")
 
-        _mark_room_read(
+        last_read_message_id = _mark_room_read(
             request.user,
             room,
         )
 
-        return JsonResponse({"success": True})
+        _broadcast(
+            room,
+            {
+                "type": "read_receipt",
+                "user_id": request.user.id,
+                "username": request.user.username,
+                "last_read_message_id": last_read_message_id,
+            },
+        )
+
+        return JsonResponse(
+            {
+                "success": True,
+                "last_read_message_id": last_read_message_id,
+            }
+        )
 
 
 def _broadcast(room, payload):

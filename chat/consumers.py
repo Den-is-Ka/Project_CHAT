@@ -10,6 +10,7 @@ from .models import (
     ChatRoom,
     Message,
     MessageReaction,
+    RoomReadState,
 )
 from .presence import (
     RECONNECT_GRACE,
@@ -117,6 +118,13 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         # Отправляем историю сообщений подключившемуся пользователю.
         await self.send_message_history()
+
+        # Restore persisted receipt state after history.
+        await self.send_read_receipts()
+
+        # Announce this user's persisted read boundary to the other
+        # connections in the room.
+        await self.broadcast_current_read_receipt()
 
     async def disconnect(self, close_code):
         """Отключение пользователя от комнаты."""
@@ -506,6 +514,24 @@ class ChatConsumer(AsyncWebsocketConsumer):
             )
         )
 
+    async def read_receipt(self, event):
+        """Send a live read receipt to other users in the room."""
+
+        if event.get("user_id") == self.scope["user"].id:
+            return
+
+        await self.send(
+            text_data=json.dumps(
+                {
+                    "type": "read_receipt",
+                    "username": event["username"],
+                    "last_read_message_id": event[
+                        "last_read_message_id"
+                    ],
+                }
+            )
+        )
+
     async def unread_update(self, event):
         """Отправляет клиенту актуальный счётчик непрочитанных сообщений."""
 
@@ -517,6 +543,46 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     "unread_count": event["unread_count"],
                 }
             )
+        )
+
+    async def send_read_receipts(self):
+        """Send persisted read-state of the other room members."""
+
+        readers = await self.get_read_receipts(
+            self.room.id,
+            self.scope["user"].id,
+        )
+
+        await self.send(
+            text_data=json.dumps(
+                {
+                    "type": "read_receipts",
+                    "readers": readers,
+                }
+            )
+        )
+
+    async def broadcast_current_read_receipt(self):
+        """Announce this user's persisted read boundary to the room."""
+
+        user = self.scope["user"]
+
+        last_read_message_id = await self.get_user_last_read_message_id(
+            self.room.id,
+            user.id,
+        )
+
+        if last_read_message_id <= 0:
+            return
+
+        await self.channel_layer.group_send(
+            self.room_group_name,
+            {
+                "type": "read_receipt",
+                "user_id": user.id,
+                "username": user.username,
+                "last_read_message_id": last_read_message_id,
+            },
         )
 
     async def send_message_history(self):
@@ -648,6 +714,62 @@ class ChatConsumer(AsyncWebsocketConsumer):
         )
 
         return serialize_message(message)
+
+    @database_sync_to_async
+    def get_read_receipts(self, room_id, current_user_id):
+        """Return persisted read-state of other room members."""
+
+        room = ChatRoom.objects.get(pk=room_id)
+
+        member_ids = set(
+            room.members.values_list(
+                "id",
+                flat=True,
+            )
+        )
+        member_ids.add(room.owner_id)
+        member_ids.discard(current_user_id)
+
+        states = (
+            RoomReadState.objects.filter(
+                room_id=room_id,
+                user_id__in=member_ids,
+                last_read_message_id__gt=0,
+            )
+            .select_related("user")
+            .order_by("user_id")
+        )
+
+        return [
+            {
+                "username": state.user.username,
+                "last_read_message_id": (
+                    state.last_read_message_id
+                ),
+            }
+            for state in states
+        ]
+
+    @database_sync_to_async
+    def get_user_last_read_message_id(
+        self,
+        room_id,
+        user_id,
+    ):
+        """Return one user's persisted read boundary."""
+
+        return (
+            RoomReadState.objects.filter(
+                room_id=room_id,
+                user_id=user_id,
+            )
+            .values_list(
+                "last_read_message_id",
+                flat=True,
+            )
+            .first()
+            or 0
+        )
 
     @database_sync_to_async
     def get_messages(self, room_id, current_user_id):
