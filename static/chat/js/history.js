@@ -1,7 +1,10 @@
 let historyLoading = false;
 let historyHasMore = true;
+let historyScrollTimer = null;
+let historyScrollSuppressed = false;
 
 const HISTORY_SCROLL_THRESHOLD = 80;
+const HISTORY_SCROLL_DEBOUNCE_MS = 150;
 
 
 function getOldestRenderedMessageId() {
@@ -57,8 +60,15 @@ async function loadOlderMessages() {
 
     historyLoading = true;
 
+    clearTimeout(historyScrollTimer);
+    historyScrollTimer = null;
+    historyScrollSuppressed = true;
+
     const previousScrollHeight =
         chatLog.scrollHeight;
+
+    const previousScrollTop =
+        chatLog.scrollTop;
 
     const anchor =
         chatLog.querySelector(
@@ -135,7 +145,9 @@ async function loadOlderMessages() {
             -
             previousScrollHeight;
 
-        chatLog.scrollTop +=
+        chatLog.scrollTop =
+            previousScrollTop
+            +
             scrollDelta;
 
     } catch (error) {
@@ -148,6 +160,13 @@ async function loadOlderMessages() {
     } finally {
 
         historyLoading = false;
+
+        setTimeout(
+            function () {
+                historyScrollSuppressed = false;
+            },
+            HISTORY_SCROLL_DEBOUNCE_MS
+        );
     }
 }
 
@@ -164,13 +183,28 @@ if (
         "scroll",
         function () {
 
-            if (
-                chatLog.scrollTop
-                <=
-                HISTORY_SCROLL_THRESHOLD
-            ) {
-                loadOlderMessages();
+            if (historyScrollSuppressed) {
+                return;
             }
+
+            clearTimeout(
+                historyScrollTimer
+            );
+
+            historyScrollTimer =
+                setTimeout(
+                    function () {
+
+                        if (
+                            chatLog.scrollTop
+                            <=
+                            HISTORY_SCROLL_THRESHOLD
+                        ) {
+                            loadOlderMessages();
+                        }
+                    },
+                    HISTORY_SCROLL_DEBOUNCE_MS
+                );
         }
     );
 }
