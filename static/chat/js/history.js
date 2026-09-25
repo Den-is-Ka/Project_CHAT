@@ -208,3 +208,441 @@ if (
         }
     );
 }
+
+
+// ==================================================
+// Browser notifications
+// ==================================================
+
+const browserNotificationButton =
+    createBrowserNotificationButton();
+
+const roomUnreadSnapshot =
+    new Map();
+
+
+function createBrowserNotificationButton() {
+
+    if (!isAuthenticated) {
+        return null;
+    }
+
+    const dropdown =
+        document.getElementById(
+            "user-menu-dropdown"
+        );
+
+    if (!dropdown) {
+        return null;
+    }
+
+    const existing =
+        document.getElementById(
+            "browser-notifications-button"
+        );
+
+    if (existing) {
+        return existing;
+    }
+
+    const button =
+        document.createElement("button");
+
+    button.type = "button";
+    button.id =
+        "browser-notifications-button";
+    button.className =
+        "user-menu-item";
+
+    const logoutForm =
+        document.getElementById(
+            "logout-form"
+        );
+
+    dropdown.insertBefore(
+        button,
+        logoutForm || null
+    );
+
+    button.addEventListener(
+        "click",
+        requestBrowserNotifications
+    );
+
+    updateBrowserNotificationButton();
+
+    return button;
+}
+
+
+function updateBrowserNotificationButton() {
+
+    const button =
+        document.getElementById(
+            "browser-notifications-button"
+        );
+
+    if (!button) {
+        return;
+    }
+
+    if (!("Notification" in window)) {
+        button.textContent =
+            "🔕 Уведомления недоступны";
+        button.disabled = true;
+        return;
+    }
+
+    button.disabled = false;
+
+    if (Notification.permission === "granted") {
+        button.textContent =
+            "🔔 Уведомления включены";
+        return;
+    }
+
+    if (Notification.permission === "denied") {
+        button.textContent =
+            "🔕 Уведомления запрещены";
+        return;
+    }
+
+    button.textContent =
+        "🔔 Включить уведомления";
+}
+
+
+function showNotificationFeedback(
+    message,
+    type
+) {
+
+    if (typeof showToast === "function") {
+        showToast(message, type);
+        return;
+    }
+
+    console.log(message);
+}
+
+
+async function requestBrowserNotifications() {
+
+    if (!("Notification" in window)) {
+        showNotificationFeedback(
+            "Системные уведомления недоступны в этом браузере.",
+            "error"
+        );
+        return;
+    }
+
+    if (Notification.permission === "granted") {
+        showNotificationFeedback(
+            "Системные уведомления уже включены.",
+            "ok"
+        );
+        return;
+    }
+
+    if (Notification.permission === "denied") {
+        showNotificationFeedback(
+            "Уведомления заблокированы в настройках браузера.",
+            "error"
+        );
+        return;
+    }
+
+    try {
+        await Notification.requestPermission();
+    } catch (error) {
+        console.error(
+            "Notification permission error:",
+            error
+        );
+    }
+
+    updateBrowserNotificationButton();
+
+    if (Notification.permission === "granted") {
+        showNotificationFeedback(
+            "Системные уведомления включены.",
+            "ok"
+        );
+    } else {
+        showNotificationFeedback(
+            "Разрешение на уведомления не выдано.",
+            "error"
+        );
+    }
+}
+
+
+function trimNotificationText(text) {
+
+    const value =
+        String(text || "").trim();
+
+    if (value.length <= 160) {
+        return value;
+    }
+
+    return value.slice(0, 157) + "…";
+}
+
+
+function showBrowserNotification(
+    title,
+    body,
+    targetUrl,
+    tag
+) {
+
+    if (
+        !("Notification" in window)
+        ||
+        Notification.permission !== "granted"
+    ) {
+        return;
+    }
+
+    const notification =
+        new Notification(
+            title,
+            {
+                body: trimNotificationText(body),
+                tag: tag || undefined,
+            }
+        );
+
+    notification.onclick =
+        function () {
+
+            window.focus();
+
+            if (targetUrl) {
+                window.location.href =
+                    targetUrl;
+            }
+
+            notification.close();
+        };
+}
+
+
+function getRoomUnreadCount(link) {
+
+    if (!link) {
+        return 0;
+    }
+
+    const badge =
+        link.querySelector(
+            ".room-unread"
+        );
+
+    if (!badge) {
+        return 0;
+    }
+
+    const count =
+        Number.parseInt(
+            badge.textContent,
+            10
+        );
+
+    return Number.isInteger(count)
+        ? count
+        : 0;
+}
+
+
+function getRoomDisplayName(link) {
+
+    const name =
+        link?.querySelector(
+            ".room-name"
+        )?.textContent;
+
+    return String(name || "Чат").trim();
+}
+
+
+function initializeRoomUnreadSnapshot() {
+
+    document
+        .querySelectorAll(
+            ".rooms-list .room-link[data-room-id]"
+        )
+        .forEach(
+            function (link) {
+
+                roomUnreadSnapshot.set(
+                    String(link.dataset.roomId),
+                    getRoomUnreadCount(link)
+                );
+            }
+        );
+}
+
+
+function checkRoomUnreadChanges() {
+
+    document
+        .querySelectorAll(
+            ".rooms-list .room-link[data-room-id]"
+        )
+        .forEach(
+            function (link) {
+
+                const roomId =
+                    String(link.dataset.roomId);
+
+                const current =
+                    getRoomUnreadCount(link);
+
+                const previous =
+                    roomUnreadSnapshot.get(roomId)
+                    || 0;
+
+                roomUnreadSnapshot.set(
+                    roomId,
+                    current
+                );
+
+                if (
+                    current <= previous
+                    ||
+                    Number(roomId)
+                        === Number(chatConfig.roomId)
+                ) {
+                    return;
+                }
+
+                const roomName =
+                    getRoomDisplayName(link);
+
+                showBrowserNotification(
+                    `Новое сообщение • ${roomName}`,
+                    `Непрочитанных сообщений: ${current}`,
+                    link.href,
+                    `chat-room-${roomId}`
+                );
+            }
+        );
+}
+
+
+function observeOtherRoomNotifications() {
+
+    const roomsList =
+        document.querySelector(
+            ".rooms-list"
+        );
+
+    if (!roomsList) {
+        return;
+    }
+
+    initializeRoomUnreadSnapshot();
+
+    const observer =
+        new MutationObserver(
+            checkRoomUnreadChanges
+        );
+
+    observer.observe(
+        roomsList,
+        {
+            childList: true,
+            subtree: true,
+            characterData: true,
+        }
+    );
+}
+
+
+function messageNotificationBody(data) {
+
+    if (data?.message) {
+        return data.message;
+    }
+
+    if (data?.attachment_name) {
+        return `Файл: ${data.attachment_name}`;
+    }
+
+    if (data?.attachment) {
+        return "Новое вложение";
+    }
+
+    return "Новое сообщение";
+}
+
+
+function observeCurrentRoomNotifications() {
+
+    if (!chatLog) {
+        return;
+    }
+
+    const observer =
+        new MutationObserver(
+            function (mutations) {
+
+                if (!document.hidden) {
+                    return;
+                }
+
+                mutations.forEach(
+                    function (mutation) {
+
+                        mutation.addedNodes.forEach(
+                            function (node) {
+
+                                if (
+                                    !(node instanceof HTMLElement)
+                                    ||
+                                    !node.classList.contains("message")
+                                    ||
+                                    node.classList.contains("own")
+                                ) {
+                                    return;
+                                }
+
+                                const data =
+                                    node.__messageData;
+
+                                if (!data) {
+                                    return;
+                                }
+
+                                const roomTitle =
+                                    document.getElementById(
+                                        "room-title-name"
+                                    )?.textContent?.trim()
+                                    || chatConfig.roomName;
+
+                                showBrowserNotification(
+                                    `${data.username} • ${roomTitle}`,
+                                    messageNotificationBody(data),
+                                    window.location.href,
+                                    `chat-message-${data.id}`
+                                );
+                            }
+                        );
+                    }
+                );
+            }
+        );
+
+    observer.observe(
+        chatLog,
+        {
+            childList: true,
+        }
+    );
+}
+
+
+observeOtherRoomNotifications();
+observeCurrentRoomNotifications();
