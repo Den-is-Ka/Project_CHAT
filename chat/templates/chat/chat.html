@@ -1293,6 +1293,13 @@
         {% if is_room_member %}
 
             <div
+                id="chat-typing-indicator"
+                class="chat-typing-indicator"
+                aria-live="polite"
+                aria-atomic="true"
+            ></div>
+
+            <div
                 id="chat-upload-panel"
                 class="chat-upload-panel hidden"
             >

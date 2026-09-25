@@ -790,6 +790,173 @@ class RoomUnreadTests(TransactionTestCase):
         self.assertEqual(response.status_code, 403)
 
 
+class ChatConsumerTypingTests(ChatConsumerTestMixin, TransactionTestCase):
+
+    def setUp(self):
+        self.owner = User.objects.create_user(
+            username="typing-owner",
+            password="pass-owner-123",
+        )
+        self.member = User.objects.create_user(
+            username="typing-member",
+            password="pass-member-123",
+        )
+        self.room = ChatRoom.objects.create(
+            name="typing-room",
+            owner=self.owner,
+        )
+        self.room.members.add(
+            self.owner,
+            self.member,
+        )
+
+    async def connect_until_history(self, comm):
+        connected, _ = await comm.connect()
+        self.assertTrue(connected)
+        await self.receive_until_history(comm)
+
+    def test_typing_is_broadcast_without_message_creation_or_sender_echo(self):
+        async def scenario():
+            owner_comm = self.communicator(
+                self.owner,
+                self.room.name,
+            )
+            member_comm = self.communicator(
+                self.member,
+                self.room.name,
+            )
+
+            await self.connect_until_history(owner_comm)
+            await self.connect_until_history(member_comm)
+
+            before_count = await sync_to_async(
+                lambda: Message.objects.filter(
+                    room=self.room
+                ).count()
+            )()
+
+            await member_comm.send_json_to(
+                {
+                    "type": "typing",
+                    "is_typing": True,
+                }
+            )
+
+            started = await self.receive_until_type(
+                owner_comm,
+                "typing",
+            )
+
+            self.assertEqual(
+                started["username"],
+                self.member.username,
+            )
+            self.assertIs(
+                started["is_typing"],
+                True,
+            )
+
+            await asyncio.sleep(0.1)
+
+            sender_messages = []
+
+            while not member_comm.output_queue.empty():
+                sender_messages.append(
+                    await member_comm.receive_json_from()
+                )
+
+            self.assertFalse(
+                any(
+                    message.get("type") == "typing"
+                    for message in sender_messages
+                )
+            )
+
+            await member_comm.send_json_to(
+                {
+                    "type": "typing",
+                    "is_typing": False,
+                }
+            )
+
+            stopped = await self.receive_until_type(
+                owner_comm,
+                "typing",
+            )
+
+            self.assertEqual(
+                stopped["username"],
+                self.member.username,
+            )
+            self.assertIs(
+                stopped["is_typing"],
+                False,
+            )
+
+            after_count = await sync_to_async(
+                lambda: Message.objects.filter(
+                    room=self.room
+                ).count()
+            )()
+
+            self.assertEqual(
+                after_count,
+                before_count,
+            )
+
+            await member_comm.disconnect()
+            await owner_comm.disconnect()
+
+        self.run_loop(scenario())
+
+    def test_invalid_typing_payload_does_not_break_connection(self):
+        async def scenario():
+            comm = self.communicator(
+                self.owner,
+                self.room.name,
+            )
+
+            await self.connect_until_history(comm)
+
+            await comm.send_json_to(
+                {
+                    "type": "typing",
+                    "is_typing": "yes",
+                }
+            )
+
+            await comm.send_json_to(
+                {
+                    "type": "ping",
+                }
+            )
+
+            pong = await self.receive_until_type(
+                comm,
+                "pong",
+            )
+
+            self.assertEqual(
+                pong["type"],
+                "pong",
+            )
+
+            count = await sync_to_async(
+                lambda: Message.objects.filter(
+                    room=self.room
+                ).count()
+            )()
+
+            self.assertEqual(
+                count,
+                0,
+            )
+
+            await comm.disconnect()
+
+        self.run_loop(scenario())
+
+
 class ChatConsumerReconnectTests(ChatConsumerTestMixin, TransactionTestCase):
     """Стабильность соединения: переподключение, grace, heartbeat."""
 

@@ -221,6 +221,9 @@ function connectWebSocket() {
             reconnectAttempts = 0;
 
             flushPendingMessages();
+
+            resetLocalTypingState();
+            handleLocalTyping();
         };
 
 
@@ -368,6 +371,16 @@ function handleWebSocketMessage(event) {
             break;
 
 
+        case "typing":
+
+            updateTypingIndicator(
+                data.username,
+                data.is_typing
+            );
+
+            break;
+
+
         case "message_updated":
 
             updateMessage(data);
@@ -397,6 +410,9 @@ function handleWebSocketClose(event) {
     console.log(
         "WebSocket connection closed"
     );
+
+    resetLocalTypingState();
+    clearRemoteTypingUsers();
 
     if (!shouldReconnect) {
         return;
@@ -1918,6 +1934,193 @@ function scrollToBottom(
 
 
 // ==================================================
+// Typing indicator
+// ==================================================
+
+const TYPING_IDLE_MS = 1500;
+const TYPING_REMOTE_TTL_MS = 3000;
+
+let localTypingActive = false;
+let localTypingTimer = null;
+
+const remoteTypingUsers =
+    new Map();
+
+
+function sendTypingStatus(isTyping) {
+
+    if (
+        !chatSocket
+        ||
+        chatSocket.readyState !== WebSocket.OPEN
+    ) {
+        return false;
+    }
+
+    chatSocket.send(
+        JSON.stringify({
+            type: "typing",
+            is_typing: Boolean(isTyping),
+        })
+    );
+
+    return true;
+}
+
+
+function resetLocalTypingState() {
+
+    if (localTypingTimer) {
+        clearTimeout(localTypingTimer);
+        localTypingTimer = null;
+    }
+
+    localTypingActive = false;
+}
+
+
+function stopLocalTyping() {
+
+    if (localTypingTimer) {
+        clearTimeout(localTypingTimer);
+        localTypingTimer = null;
+    }
+
+    if (!localTypingActive) {
+        return;
+    }
+
+    localTypingActive = false;
+
+    sendTypingStatus(false);
+}
+
+
+function handleLocalTyping() {
+
+    if (!messageInput) {
+        return;
+    }
+
+    const hasText =
+        Boolean(
+            messageInput.value.trim()
+        );
+
+    if (!hasText) {
+        stopLocalTyping();
+        return;
+    }
+
+    if (!localTypingActive) {
+        localTypingActive =
+            sendTypingStatus(true);
+    }
+
+    if (localTypingTimer) {
+        clearTimeout(localTypingTimer);
+    }
+
+    localTypingTimer =
+        setTimeout(
+            stopLocalTyping,
+            TYPING_IDLE_MS
+        );
+}
+
+
+function renderTypingIndicator() {
+
+    if (!typingIndicator) {
+        return;
+    }
+
+    const names =
+        Array.from(
+            remoteTypingUsers.keys()
+        );
+
+    if (names.length === 0) {
+        typingIndicator.textContent = "";
+        return;
+    }
+
+    if (names.length === 1) {
+        typingIndicator.textContent =
+            `${names[0]} печатает…`;
+        return;
+    }
+
+    if (names.length === 2) {
+        typingIndicator.textContent =
+            `${names[0]} и ${names[1]} печатают…`;
+        return;
+    }
+
+    typingIndicator.textContent =
+        `${names[0]}, ${names[1]} и ещё ${names.length - 2} печатают…`;
+}
+
+
+function updateTypingIndicator(
+    username,
+    isTyping
+) {
+
+    if (
+        !typingIndicator
+        ||
+        !username
+    ) {
+        return;
+    }
+
+    const previousTimer =
+        remoteTypingUsers.get(username);
+
+    if (previousTimer) {
+        clearTimeout(previousTimer);
+    }
+
+    if (!isTyping) {
+        remoteTypingUsers.delete(username);
+        renderTypingIndicator();
+        return;
+    }
+
+    const timeoutId =
+        setTimeout(
+            function () {
+                remoteTypingUsers.delete(username);
+                renderTypingIndicator();
+            },
+            TYPING_REMOTE_TTL_MS
+        );
+
+    remoteTypingUsers.set(
+        username,
+        timeoutId
+    );
+
+    renderTypingIndicator();
+}
+
+
+function clearRemoteTypingUsers() {
+
+    remoteTypingUsers.forEach(
+        function (timeoutId) {
+            clearTimeout(timeoutId);
+        }
+    );
+
+    remoteTypingUsers.clear();
+
+    renderTypingIndicator();
+}
+
+
+// ==================================================
 // Send message
 // ==================================================
 
@@ -1941,6 +2144,9 @@ function sendMessage() {
     if (!message) {
         return;
     }
+
+
+    stopLocalTyping();
 
 
     if (
@@ -2035,6 +2241,12 @@ const messageInput =
     );
 
 
+const typingIndicator =
+    document.getElementById(
+        "chat-typing-indicator"
+    );
+
+
 if (messageSubmitButton) {
 
     messageSubmitButton.addEventListener(
@@ -2065,7 +2277,10 @@ if (messageInput) {
 
     messageInput.addEventListener(
         "input",
-        updateInputMode
+        function () {
+            updateInputMode();
+            handleLocalTyping();
+        }
     );
 }
 

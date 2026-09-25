@@ -226,6 +226,24 @@ class ChatConsumer(AsyncWebsocketConsumer):
             return
 
         # Реакция (эмодзи) на сообщение.
+        if isinstance(incoming, dict) and incoming.get("type") == "typing":
+            is_typing = incoming.get("is_typing")
+
+            if isinstance(is_typing, bool):
+                user = self.scope["user"]
+
+                await self.channel_layer.group_send(
+                    self.room_group_name,
+                    {
+                        "type": "typing_status",
+                        "username": user.username,
+                        "is_typing": is_typing,
+                        "channel_name": self.channel_name,
+                    },
+                )
+
+            return
+
         if isinstance(incoming, dict) and incoming.get("type") == "react":
             await self.handle_reaction(incoming)
             return
@@ -409,6 +427,22 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 {
                     "type": "error",
                     "message": message,
+                }
+            )
+        )
+
+    async def typing_status(self, event):
+        """????????? ????????? ?????? ?????? ????????? ??????????."""
+
+        if event.get("channel_name") == self.channel_name:
+            return
+
+        await self.send(
+            text_data=json.dumps(
+                {
+                    "type": "typing",
+                    "username": event["username"],
+                    "is_typing": event["is_typing"],
                 }
             )
         )
