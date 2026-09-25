@@ -214,17 +214,14 @@ if (
 // Browser notifications
 // ==================================================
 
-const browserNotificationButton =
-    createBrowserNotificationButton();
-
-const roomUnreadSnapshot =
-    new Map();
+createBrowserNotificationButton();
+installBrowserNotificationHandler();
 
 
 function createBrowserNotificationButton() {
 
     if (!isAuthenticated) {
-        return null;
+        return;
     }
 
     const dropdown =
@@ -233,45 +230,41 @@ function createBrowserNotificationButton() {
         );
 
     if (!dropdown) {
-        return null;
+        return;
     }
 
-    const existing =
+    let button =
         document.getElementById(
             "browser-notifications-button"
         );
 
-    if (existing) {
-        return existing;
-    }
+    if (!button) {
+        button =
+            document.createElement("button");
 
-    const button =
-        document.createElement("button");
+        button.type = "button";
+        button.id =
+            "browser-notifications-button";
+        button.className =
+            "user-menu-item";
 
-    button.type = "button";
-    button.id =
-        "browser-notifications-button";
-    button.className =
-        "user-menu-item";
+        const logoutForm =
+            document.getElementById(
+                "logout-form"
+            );
 
-    const logoutForm =
-        document.getElementById(
-            "logout-form"
+        dropdown.insertBefore(
+            button,
+            logoutForm || null
         );
 
-    dropdown.insertBefore(
-        button,
-        logoutForm || null
-    );
-
-    button.addEventListener(
-        "click",
-        requestBrowserNotifications
-    );
+        button.addEventListener(
+            "click",
+            requestBrowserNotifications
+        );
+    }
 
     updateBrowserNotificationButton();
-
-    return button;
 }
 
 
@@ -429,30 +422,11 @@ function showBrowserNotification(
 }
 
 
-function getRoomUnreadCount(link) {
+function getRoomLink(roomId) {
 
-    if (!link) {
-        return 0;
-    }
-
-    const badge =
-        link.querySelector(
-            ".room-unread"
-        );
-
-    if (!badge) {
-        return 0;
-    }
-
-    const count =
-        Number.parseInt(
-            badge.textContent,
-            10
-        );
-
-    return Number.isInteger(count)
-        ? count
-        : 0;
+    return document.querySelector(
+        `.rooms-list .room-link[data-room-id="${String(roomId)}"]`
+    );
 }
 
 
@@ -464,100 +438,6 @@ function getRoomDisplayName(link) {
         )?.textContent;
 
     return String(name || "Чат").trim();
-}
-
-
-function initializeRoomUnreadSnapshot() {
-
-    document
-        .querySelectorAll(
-            ".rooms-list .room-link[data-room-id]"
-        )
-        .forEach(
-            function (link) {
-
-                roomUnreadSnapshot.set(
-                    String(link.dataset.roomId),
-                    getRoomUnreadCount(link)
-                );
-            }
-        );
-}
-
-
-function checkRoomUnreadChanges() {
-
-    document
-        .querySelectorAll(
-            ".rooms-list .room-link[data-room-id]"
-        )
-        .forEach(
-            function (link) {
-
-                const roomId =
-                    String(link.dataset.roomId);
-
-                const current =
-                    getRoomUnreadCount(link);
-
-                const previous =
-                    roomUnreadSnapshot.get(roomId)
-                    || 0;
-
-                roomUnreadSnapshot.set(
-                    roomId,
-                    current
-                );
-
-                if (
-                    current <= previous
-                    ||
-                    Number(roomId)
-                        === Number(chatConfig.roomId)
-                ) {
-                    return;
-                }
-
-                const roomName =
-                    getRoomDisplayName(link);
-
-                showBrowserNotification(
-                    `Новое сообщение • ${roomName}`,
-                    `Непрочитанных сообщений: ${current}`,
-                    link.href,
-                    `chat-room-${roomId}`
-                );
-            }
-        );
-}
-
-
-function observeOtherRoomNotifications() {
-
-    const roomsList =
-        document.querySelector(
-            ".rooms-list"
-        );
-
-    if (!roomsList) {
-        return;
-    }
-
-    initializeRoomUnreadSnapshot();
-
-    const observer =
-        new MutationObserver(
-            checkRoomUnreadChanges
-        );
-
-    observer.observe(
-        roomsList,
-        {
-            childList: true,
-            subtree: true,
-            characterData: true,
-        }
-    );
 }
 
 
@@ -579,70 +459,110 @@ function messageNotificationBody(data) {
 }
 
 
-function observeCurrentRoomNotifications() {
+function handleLiveBrowserNotification(data) {
 
-    if (!chatLog) {
+    if (
+        !data
+        ||
+        data.username === chatConfig.username
+    ) {
         return;
     }
 
-    const observer =
-        new MutationObserver(
-            function (mutations) {
+    const roomTitle =
+        document.getElementById(
+            "room-title-name"
+        )?.textContent?.trim()
+        || chatConfig.roomName;
 
-                if (!document.hidden) {
-                    return;
-                }
-
-                mutations.forEach(
-                    function (mutation) {
-
-                        mutation.addedNodes.forEach(
-                            function (node) {
-
-                                if (
-                                    !(node instanceof HTMLElement)
-                                    ||
-                                    !node.classList.contains("message")
-                                    ||
-                                    node.classList.contains("own")
-                                ) {
-                                    return;
-                                }
-
-                                const data =
-                                    node.__messageData;
-
-                                if (!data) {
-                                    return;
-                                }
-
-                                const roomTitle =
-                                    document.getElementById(
-                                        "room-title-name"
-                                    )?.textContent?.trim()
-                                    || chatConfig.roomName;
-
-                                showBrowserNotification(
-                                    `${data.username} • ${roomTitle}`,
-                                    messageNotificationBody(data),
-                                    window.location.href,
-                                    `chat-message-${data.id}`
-                                );
-                            }
-                        );
-                    }
-                );
-            }
-        );
-
-    observer.observe(
-        chatLog,
-        {
-            childList: true,
-        }
+    showBrowserNotification(
+        `${data.username} • ${roomTitle}`,
+        messageNotificationBody(data),
+        window.location.href,
+        `chat-message-${data.id}`
     );
 }
 
 
-observeOtherRoomNotifications();
-observeCurrentRoomNotifications();
+function handleOtherRoomBrowserNotification(data) {
+
+    if (
+        !data
+        ||
+        Number(data.room_id)
+            === Number(chatConfig.roomId)
+        ||
+        Number(data.unread_count) <= 0
+    ) {
+        return;
+    }
+
+    const link =
+        getRoomLink(data.room_id);
+
+    if (!link) {
+        return;
+    }
+
+    const roomName =
+        getRoomDisplayName(link);
+
+    showBrowserNotification(
+        `Новое сообщение • ${roomName}`,
+        `Непрочитанных сообщений: ${data.unread_count}`,
+        link.href,
+        `chat-room-${data.room_id}`
+    );
+}
+
+
+function installBrowserNotificationHandler() {
+
+    if (
+        !isAuthenticated
+        ||
+        typeof handleWebSocketMessage
+            !== "function"
+    ) {
+        return;
+    }
+
+    const originalHandler =
+        handleWebSocketMessage;
+
+    handleWebSocketMessage =
+        function (event) {
+
+            let data = null;
+
+            try {
+                data = JSON.parse(event.data);
+            } catch (error) {
+                data = null;
+            }
+
+            originalHandler(event);
+
+            if (!data) {
+                return;
+            }
+
+            if (
+                data.type === "message"
+                &&
+                document.hidden
+            ) {
+                handleLiveBrowserNotification(data);
+                return;
+            }
+
+            if (data.type === "unread_update") {
+                handleOtherRoomBrowserNotification(data);
+            }
+        };
+
+    if (chatSocket) {
+        chatSocket.onmessage =
+            handleWebSocketMessage;
+    }
+}
